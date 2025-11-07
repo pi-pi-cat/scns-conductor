@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 from core.config import get_settings
-from core.database import sync_db, Base
+from core.database import sync_db
 from core.models import SystemResource
 from core.utils.logger import setup_logger
 

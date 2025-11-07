@@ -388,7 +388,7 @@ python scripts/cleanup.py
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=scns_conductor
-POSTGRES_USER=scns_user
+POSTGRES_USER=scnsqap
 POSTGRES_PASSWORD=your_password
 
 # Redis 配置

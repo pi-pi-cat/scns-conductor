@@ -10,6 +10,7 @@ sqlmodel==0.0.14
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 alembic==1.12.1
+greenlet==3.0.3  # SQLAlchemy 异步支持必需
 
 # Redis and Task Queue
 redis==5.0.1
