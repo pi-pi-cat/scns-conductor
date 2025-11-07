@@ -14,7 +14,7 @@ from core.config import get_settings
 from core.database import async_db
 from core.redis_client import redis_manager
 from core.utils.logger import setup_logger
-from .routers import jobs_router
+from .routers import jobs_router, dashboard_router
 from .middleware import RequestIDMiddleware
 
 
@@ -81,6 +81,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(jobs_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/", status_code=status.HTTP_200_OK)

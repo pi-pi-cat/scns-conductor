@@ -1,13 +1,14 @@
 """
 作业管理 API 端点
+
+重构说明：
+- 移除了数据库会话依赖注入
+- 数据库连接由 Repository 层自动管理
+- Router 层只负责请求/响应处理和日志记录
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, status
 from loguru import logger
-
-from core.exceptions import JobNotFoundException, JobStateException
-from ..dependencies import get_db
 from ..schemas import (
     JobSubmitRequest,
     JobSubmitResponse,
@@ -25,9 +26,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
     "/submit", response_model=JobSubmitResponse, status_code=status.HTTP_201_CREATED
 )
 @handle_api_errors
-async def submit_job(
-    request: JobSubmitRequest, db: AsyncSession = Depends(get_db)
-) -> JobSubmitResponse:
+async def submit_job(request: JobSubmitRequest) -> JobSubmitResponse:
     """
     提交新作业执行
 
@@ -36,21 +35,22 @@ async def submit_job(
 
     Args:
         request: 包含作业规格和脚本的提交请求
-        db: 数据库会话
 
     Returns:
         作业 ID
+
+    说明:
+        数据库连接由 Repository 层自动管理，
+        短事务，用完即释放，不会长时间占用连接
     """
-    job_id = await JobService.submit_job(request, db)
+    job_id = await JobService.submit_job(request)
     logger.info(f"Job {job_id} submitted successfully")
     return JobSubmitResponse(job_id=str(job_id))
 
 
 @router.get("/query/{job_id}", response_model=JobQueryResponse)
 @handle_api_errors
-async def query_job(
-    job_id: int, db: AsyncSession = Depends(get_db)
-) -> JobQueryResponse:
+async def query_job(job_id: int) -> JobQueryResponse:
     """
     查询作业状态和信息
 
@@ -61,22 +61,23 @@ async def query_job(
 
     Args:
         job_id: 唯一作业标识符
-        db: 数据库会话
 
     Returns:
         完整的作业信息
 
     Raises:
         404: 作业未找到
+
+    说明:
+        数据库连接由 Repository 层自动管理，
+        单次查询，短事务，快速释放连接
     """
-    return await JobService.query_job(job_id, db)
+    return await JobService.query_job(job_id)
 
 
 @router.post("/cancel/{job_id}", response_model=JobCancelResponse)
 @handle_api_errors
-async def cancel_job(
-    job_id: int, db: AsyncSession = Depends(get_db)
-) -> JobCancelResponse:
+async def cancel_job(job_id: int) -> JobCancelResponse:
     """
     取消正在运行或等待中的作业
 
@@ -85,14 +86,17 @@ async def cancel_job(
 
     Args:
         job_id: 唯一作业标识符
-        db: 数据库会话
 
     Returns:
         取消确认
 
     Raises:
         404: 作业未找到
+
+    说明:
+        数据库连接由 Repository 层自动管理，
+        多个短事务，每次操作后立即释放连接
     """
-    await JobService.cancel_job(job_id, db)
+    await JobService.cancel_job(job_id)
     logger.info(f"Job {job_id} cancelled successfully")
     return JobCancelResponse(msg="取消成功")

@@ -1,28 +1,30 @@
 """
 核心作业管理服务
+
+重构说明：
+- 移除了对数据库会话的依赖注入
+- 所有数据库操作通过 JobRepository 进行
+- Repository 内部管理会话生命周期（按需创建，用完即释放）
+- Service 层只关注业务逻辑，不关心数据库连接管理
 """
 
 import os
 import signal
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
-from core.models import Job, ResourceAllocation
+from core.models import Job
 from core.enums import JobState, DataSource
-from core.exceptions import JobNotFoundException, JobStateException
+from core.exceptions import JobNotFoundException
 from core.redis_client import redis_manager
 from core.utils.time_utils import (
     format_elapsed_time,
     format_limit_time,
-    parse_time_limit,
 )
-from core.config import get_settings
 
-from ..schemas.job_submit import JobSpec, JobSubmitRequest
+from ..repositories import JobRepository
+from ..schemas.job_submit import JobSubmitRequest
 from ..schemas.job_query import JobQueryResponse, TimeInfo, JobLog, JobDetail
 from .log_reader import LogReaderService
 
@@ -31,16 +33,20 @@ class JobService:
     """作业操作的核心服务"""
 
     @staticmethod
-    async def submit_job(request: JobSubmitRequest, db: AsyncSession) -> int:
+    async def submit_job(request: JobSubmitRequest) -> int:
         """
         向系统提交新作业
 
         参数:
             request: 作业提交请求
-            db: 数据库会话
 
         返回:
             作业ID
+
+        说明:
+            1. 创建作业记录（短事务，立即释放连接）
+            2. 执行队列操作（不占用数据库连接）
+            3. 如需更新状态，再次获取连接（短事务）
         """
         job_spec = request.job
         script = request.script
@@ -49,46 +55,38 @@ class JobService:
         total_cpus = job_spec.get_total_cpus()
         time_limit_minutes = job_spec.get_time_limit_minutes()
 
-        # 创建作业记录
-        job = Job(
-            account=job_spec.account,
-            name=job_spec.name,
-            partition=job_spec.partition,
-            state=JobState.PENDING,
-            allocated_cpus=total_cpus,
-            allocated_nodes=1,
-            ntasks_per_node=job_spec.ntasks_per_node,
-            cpus_per_task=job_spec.cpus_per_task,
-            memory_per_node=job_spec.memory_per_node,
-            time_limit=time_limit_minutes,
-            exclusive=job_spec.exclusive,
-            script=script,
-            work_dir=job_spec.current_working_directory,
-            stdout_path=job_spec.standard_output,
-            stderr_path=job_spec.standard_error,
-            environment=job_spec.environment,
-            data_source=DataSource.API,
-            exit_code="",
-        )
+        # 准备作业数据
+        job_data = {
+            "account": job_spec.account,
+            "name": job_spec.name,
+            "partition": job_spec.partition,
+            "state": JobState.PENDING,
+            "allocated_cpus": total_cpus,
+            "allocated_nodes": 1,
+            "ntasks_per_node": job_spec.ntasks_per_node,
+            "cpus_per_task": job_spec.cpus_per_task,
+            "memory_per_node": job_spec.memory_per_node,
+            "time_limit": time_limit_minutes,
+            "exclusive": job_spec.exclusive,
+            "script": script,
+            "work_dir": job_spec.current_working_directory,
+            "stdout_path": job_spec.standard_output,
+            "stderr_path": job_spec.standard_error,
+            "environment": job_spec.environment,
+            "data_source": DataSource.API,
+            "exit_code": "",
+        }
 
-        # 添加到数据库
-        db.add(job)
-        await db.flush()  # 刷新以获取作业ID
-        await db.refresh(job)
-
+        # ✅ 短事务1：创建作业记录（会话自动管理，用完即释放）
+        job = await JobRepository.create_job(job_data)
         job_id = job.id
-
-        # 提交事务
-        await db.commit()
 
         logger.info(
             f"作业已提交: id={job_id}, name={job_spec.name}, "
             f"cpus={total_cpus}, account={job_spec.account}"
         )
 
-        # 将作业放入RQ调度队列
-        # Worker的调度守护进程会监测PENDING作业，分配资源后Executor开始执行
-        # 注意：使用字符串路径以避免循环导入
+        # ⚡ 队列操作（不占用数据库连接）
         try:
             queue = redis_manager.get_queue()
             rq_job = queue.enqueue(
@@ -99,41 +97,44 @@ class JobService:
             logger.info(f"作业 {job_id} 已入队至RQ: {rq_job.id}")
         except Exception as e:
             logger.error(f"作业 {job_id} 入队失败: {e}")
-            # 入队失败，回滚作业状态为失败
-            job.state = JobState.FAILED
-            job.error_msg = f"作业入队失败: {e}"
-            await db.commit()
+
+            # ✅ 短事务2：更新失败状态（独立的短连接）
+            await JobRepository.update_job_state(
+                job_id=job_id,
+                new_state=JobState.FAILED,
+                error_msg=f"作业入队失败: {e}",
+            )
             raise
 
         return job_id
 
     @staticmethod
-    async def query_job(job_id: int, db: AsyncSession) -> JobQueryResponse:
+    async def query_job(job_id: int) -> JobQueryResponse:
         """
         查询作业信息
 
         参数:
             job_id: 作业ID
-            db: 数据库会话
 
         返回:
             作业查询响应
 
         异常:
             JobNotFoundException: 未找到对应作业时抛出
+
+        说明:
+            单次查询操作，短事务，快速释放连接
         """
-        # 查询作业
-        stmt = select(Job).where(Job.id == job_id)
-        result = await db.execute(stmt)
-        job = result.scalar_one_or_none()
+        # ✅ 短事务：查询作业（会话自动管理）
+        job = await JobRepository.get_job_by_id(job_id, with_allocation=True)
 
         if job is None:
             raise JobNotFoundException(job_id)
 
-        # 计算时间信息
+        # 计算时间信息（纯计算，不占用连接）
         time_info = JobService._build_time_info(job)
 
-        # 读取日志文件内容
+        # 读取日志文件内容（文件I/O，不占用数据库连接）
         stdout_content, stderr_content = await LogReaderService.get_job_logs(job)
         job_log = JobLog(stdout=stdout_content, stderr=stderr_content)
 
@@ -164,21 +165,23 @@ class JobService:
         return response
 
     @staticmethod
-    async def cancel_job(job_id: int, db: AsyncSession) -> None:
+    async def cancel_job(job_id: int) -> None:
         """
         取消作业（幂等操作）
 
         参数:
             job_id: 作业ID
-            db: 数据库会话
 
         异常:
             JobNotFoundException: 未找到作业时抛出
+
+        说明:
+            1. 查询作业状态（短事务）
+            2. 终止进程（系统调用，不占用连接）
+            3. 更新状态和释放资源（短事务）
         """
-        # 查询作业
-        stmt = select(Job).where(Job.id == job_id)
-        result = await db.execute(stmt)
-        job = result.scalar_one_or_none()
+        # ✅ 短事务1：查询作业
+        job = await JobRepository.get_job_by_id(job_id, with_allocation=True)
 
         if job is None:
             raise JobNotFoundException(job_id)
@@ -191,56 +194,48 @@ class JobService:
 
         # 如果作业正在运行，尝试终止作业进程
         if job.state == JobState.RUNNING:
-            await JobService._kill_job_process(job_id, db)
+            await JobService._kill_job_process(job)
 
-        # 更新作业状态为已取消
-        job.state = JobState.CANCELLED
-        job.end_time = datetime.utcnow()
-        if not job.exit_code:
-            job.exit_code = "-1:15"  # SIGTERM信号
-
-        # 释放资源分配
-        stmt = select(ResourceAllocation).where(
-            ResourceAllocation.job_id == job_id, ResourceAllocation.released == False
+        # ✅ 短事务2：更新作业状态为已取消
+        await JobRepository.update_job_state(
+            job_id=job_id,
+            new_state=JobState.CANCELLED,
+            end_time=datetime.utcnow(),
+            exit_code=job.exit_code or "-1:15",  # SIGTERM信号
         )
-        result = await db.execute(stmt)
-        allocation = result.scalar_one_or_none()
 
-        if allocation:
-            allocation.released = True
-            allocation.released_time = datetime.utcnow()
-
-        await db.commit()
+        # ✅ 短事务3：释放资源分配
+        await JobRepository.release_resource_allocation(job_id)
 
         logger.info(f"作业 {job_id} 取消成功")
 
     @staticmethod
-    async def _kill_job_process(job_id: int, db: AsyncSession) -> None:
+    async def _kill_job_process(job: Job) -> None:
         """
         杀死正在运行的作业进程
 
         参数:
-            job_id: 作业ID
-            db: 数据库会话
+            job: 作业对象（已加载 resource_allocation 关系）
+
+        说明:
+            纯系统调用，不占用数据库连接
         """
-        # 查询资源分配表，获取对应的进程ID
-        stmt = select(ResourceAllocation).where(ResourceAllocation.job_id == job_id)
-        result = await db.execute(stmt)
-        allocation = result.scalar_one_or_none()
+        # 从已加载的关系中获取资源分配
+        allocation = job.resource_allocation
 
         if allocation and allocation.process_id:
             try:
                 # 向进程组发送SIGTERM信号以终止作业
                 os.killpg(os.getpgid(allocation.process_id), signal.SIGTERM)
                 logger.info(
-                    f"已向作业 {job_id} 发送SIGTERM信号 (PID: {allocation.process_id})"
+                    f"已向作业 {job.id} 发送SIGTERM信号 (PID: {allocation.process_id})"
                 )
             except ProcessLookupError:
                 logger.warning(
-                    f"未找到作业 {job_id} 对应的进程 {allocation.process_id}"
+                    f"未找到作业 {job.id} 对应的进程 {allocation.process_id}"
                 )
             except Exception as e:
-                logger.error(f"终止作业 {job_id} 进程失败: {e}")
+                logger.error(f"终止作业 {job.id} 进程失败: {e}")
 
     @staticmethod
     def _build_time_info(job: Job) -> TimeInfo:
