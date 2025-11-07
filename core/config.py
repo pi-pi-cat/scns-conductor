@@ -14,7 +14,7 @@ from .utils.singleton import singleton
 class Settings(BaseSettings):
     """Application settings with validation"""
 
-    # Database Configuration
+    # 数据库配置
     POSTGRES_HOST: str = Field(default="localhost", description="PostgreSQL host")
     POSTGRES_PORT: int = Field(default=5432, description="PostgreSQL port")
     POSTGRES_DB: str = Field(
@@ -23,35 +23,35 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = Field(default="scns_user", description="PostgreSQL user")
     POSTGRES_PASSWORD: str = Field(default="", description="PostgreSQL password")
 
-    # Redis Configuration
+    # Redis配置
     REDIS_HOST: str = Field(default="localhost", description="Redis host")
     REDIS_PORT: int = Field(default=6379, description="Redis port")
     REDIS_DB: int = Field(default=0, description="Redis database number")
     REDIS_PASSWORD: Optional[str] = Field(default=None, description="Redis password")
 
-    # RQ Queue Configuration
+    # RQ队列配置
     RQ_QUEUE_NAME: str = Field(default="scns_jobs", description="RQ queue name")
     RQ_RESULT_TTL: int = Field(default=86400, description="RQ result TTL in seconds")
 
-    # API Server Configuration
+    # API服务器配置
     API_HOST: str = Field(default="0.0.0.0", description="API server host")
     API_PORT: int = Field(default=8000, description="API server port")
     API_WORKERS: int = Field(default=4, description="API server workers")
 
-    # Worker Configuration
+    # Worker配置
     WORKER_CONCURRENCY: int = Field(default=1, description="Worker concurrency")
     WORKER_BURST: bool = Field(default=False, description="Worker burst mode")
 
-    # Resource Configuration
+    # 资源配置
     NODE_NAME: str = Field(default="default-node", description="Node name")
     TOTAL_CPUS: int = Field(default=32, description="Total CPUs available")
     DEFAULT_PARTITION: str = Field(default="default", description="Default partition")
 
-    # Logging Configuration
+    # 日志配置
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
     LOG_FILE: Optional[str] = Field(default=None, description="Log file path")
 
-    # Path Configuration
+    # 路径配置
     JOB_WORK_BASE_DIR: str = Field(
         default="/var/scns-conductor/jobs",
         description="Base directory for job work directories",
@@ -137,7 +137,7 @@ class SettingsManager:
         return self._settings
 
 
-# Convenience function for getting settings
+# 获取配置的便捷函数
 def get_settings() -> Settings:
     """Get application settings"""
     manager = SettingsManager()

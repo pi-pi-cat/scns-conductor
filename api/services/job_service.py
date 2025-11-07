@@ -1,6 +1,7 @@
 """
-Core job management service
+核心作业管理服务
 """
+
 import os
 import signal
 from datetime import datetime
@@ -14,7 +15,11 @@ from core.models import Job, ResourceAllocation
 from core.enums import JobState, DataSource
 from core.exceptions import JobNotFoundException, JobStateException
 from core.redis_client import redis_manager
-from core.utils.time_utils import format_elapsed_time, format_limit_time, parse_time_limit
+from core.utils.time_utils import (
+    format_elapsed_time,
+    format_limit_time,
+    parse_time_limit,
+)
 from core.config import get_settings
 
 from ..schemas.job_submit import JobSpec, JobSubmitRequest
@@ -23,28 +28,28 @@ from .log_reader import LogReaderService
 
 
 class JobService:
-    """Core service for job operations"""
-    
+    """作业操作的核心服务"""
+
     @staticmethod
     async def submit_job(request: JobSubmitRequest, db: AsyncSession) -> int:
         """
-        Submit a new job to the system
-        
+        向系统提交新作业
+
         Args:
-            request: Job submission request
-            db: Database session
-        
+            request: 作业提交请求
+            db: 数据库会话
+
         Returns:
-            Job ID
+            作业ID
         """
         job_spec = request.job
         script = request.script
-        
-        # Calculate total CPUs required
+
+        # 计算所需的总CPU数
         total_cpus = job_spec.get_total_cpus()
         time_limit_minutes = job_spec.get_time_limit_minutes()
-        
-        # Create job record
+
+        # 创建作业记录
         job = Job(
             account=job_spec.account,
             name=job_spec.name,
@@ -65,59 +70,59 @@ class JobService:
             data_source=DataSource.API,
             exit_code="",
         )
-        
-        # Add to database
+
+        # 添加到数据库
         db.add(job)
-        await db.flush()  # Flush to get the job ID
+        await db.flush()  # 刷新以获取作业ID
         await db.refresh(job)
-        
+
         job_id = job.id
-        
-        # Commit transaction
+
+        # 提交事务
         await db.commit()
-        
+
         logger.info(
             f"Job submitted: id={job_id}, name={job_spec.name}, "
             f"cpus={total_cpus}, account={job_spec.account}"
         )
-        
-        # Enqueue job for execution (using worker's execute_job_task)
-        # Note: This will be handled by the worker's scheduler daemon
-        # We just mark it as PENDING and the scheduler will pick it up
-        
+
+        # 将作业加入执行队列（由worker的调度守护进程处理）
+        # 注意：这将由worker的调度守护进程处理
+        # 我们只需将其标记为PENDING，调度器会自动拾取
+
         return job_id
-    
+
     @staticmethod
     async def query_job(job_id: int, db: AsyncSession) -> JobQueryResponse:
         """
         Query job information
-        
+
         Args:
             job_id: Job ID
             db: Database session
-        
+
         Returns:
             Job query response
-        
+
         Raises:
             JobNotFoundException: If job not found
         """
-        # Query job
+        # 查询作业
         stmt = select(Job).where(Job.id == job_id)
         result = await db.execute(stmt)
         job = result.scalar_one_or_none()
-        
+
         if job is None:
             raise JobNotFoundException(job_id)
-        
-        # Calculate time information
+
+        # 计算时间信息
         time_info = JobService._build_time_info(job)
-        
-        # Read logs
+
+        # 读取日志
         stdout_content, stderr_content = await LogReaderService.get_job_logs(job)
         job_log = JobLog(stdout=stdout_content, stderr=stderr_content)
-        
-        # Build detail
+
+        # 构建详细信息
         detail = JobDetail(
             job_name=job.name,
             user=job.account,
@@ -130,8 +135,8 @@ class JobService:
             data_source=job.data_source,
             account=job.account,
         )
-        
-        # Build response
+
+        # 构建响应
         response = JobQueryResponse(
             job_id=str(job.id),
             state=job.state,
@@ -140,66 +145,65 @@ class JobService:
             job_log=job_log,
             detail=detail,
         )
-        
+
         return response
-    
+
     @staticmethod
     async def cancel_job(job_id: int, db: AsyncSession) -> None:
         """
         Cancel a job (idempotent operation)
-        
+
         Args:
             job_id: Job ID
             db: Database session
-        
+
         Raises:
             JobNotFoundException: If job not found
         """
-        # Query job
+        # 查询作业
         stmt = select(Job).where(Job.id == job_id)
         result = await db.execute(stmt)
         job = result.scalar_one_or_none()
-        
+
         if job is None:
             raise JobNotFoundException(job_id)
-        
-        # Check if job can be cancelled
+
+        # 检查作业是否可以取消
         if job.state in [JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED]:
-            # Idempotent: already in terminal state
+            # 幂等性：已经处于终止状态
             logger.info(f"Job {job_id} already in terminal state: {job.state}")
             return
-        
-        # If job is running, try to kill the process
+
+        # 如果作业正在运行，尝试终止进程
         if job.state == JobState.RUNNING:
             await JobService._kill_job_process(job_id, db)
-        
-        # Update job state
+
+        # 更新作业状态
         job.state = JobState.CANCELLED
         job.end_time = datetime.utcnow()
         if not job.exit_code:
             job.exit_code = "-1:15"  # SIGTERM
-        
-        # Release resources
+
+        # 释放资源
         stmt = select(ResourceAllocation).where(
-            ResourceAllocation.job_id == job_id,
-            ResourceAllocation.released == False
+            ResourceAllocation.job_id == job_id, ResourceAllocation.released == False
         )
         result = await db.execute(stmt)
         allocation = result.scalar_one_or_none()
-        
+
         if allocation:
             allocation.released = True
             allocation.released_time = datetime.utcnow()
-        
+
         await db.commit()
-        
+
         logger.info(f"Job {job_id} cancelled successfully")
-    
+
     @staticmethod
     async def _kill_job_process(job_id: int, db: AsyncSession) -> None:
         """
         Kill running job process
-        
+
         Args:
             job_id: Job ID
             db: Database session
@@ -208,41 +212,45 @@ class JobService:
         stmt = select(ResourceAllocation).where(ResourceAllocation.job_id == job_id)
         result = await db.execute(stmt)
         allocation = result.scalar_one_or_none()
-        
+
         if allocation and allocation.process_id:
             try:
-                # Send SIGTERM to process group
+                # 向进程组发送SIGTERM信号
                 os.killpg(os.getpgid(allocation.process_id), signal.SIGTERM)
-                logger.info(f"Sent SIGTERM to job {job_id} (PID: {allocation.process_id})")
+                logger.info(
+                    f"Sent SIGTERM to job {job_id} (PID: {allocation.process_id})"
+                )
             except ProcessLookupError:
-                logger.warning(f"Process {allocation.process_id} for job {job_id} not found")
+                logger.warning(
+                    f"Process {allocation.process_id} for job {job_id} not found"
+                )
             except Exception as e:
                 logger.error(f"Failed to kill job {job_id} process: {e}")
-    
+
     @staticmethod
     def _build_time_info(job: Job) -> TimeInfo:
         """
         Build time information for job
-        
+
         Args:
             job: Job model
-        
+
         Returns:
             TimeInfo object
         """
-        # Calculate elapsed time
+        # 计算经过的时间
         if job.start_time:
             end_time = job.end_time or datetime.utcnow()
             elapsed_time = format_elapsed_time(job.start_time, end_time)
         else:
             elapsed_time = "0-00:00:00"
-        
-        # Format time limit
+
+        # 格式化时间限制
         if job.time_limit:
             limit_time = format_limit_time(job.time_limit)
         else:
             limit_time = "UNLIMITED"
-        
+
         return TimeInfo(
             submit_time=job.submit_time,
             start_time=job.start_time,
@@ -251,4 +259,3 @@ class JobService:
             elapsed_time=elapsed_time,
             limit_time=limit_time,
         )
-

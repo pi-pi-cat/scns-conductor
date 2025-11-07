@@ -1,5 +1,5 @@
 """
-Validation utilities
+验证工具
 """
 import os
 import re
@@ -9,17 +9,17 @@ from typing import Optional
 
 def validate_path(path: str, must_exist: bool = False) -> bool:
     """
-    Validate a file system path
+    验证文件系统路径
     
     Args:
-        path: Path to validate
-        must_exist: If True, path must exist
+        path: 要验证的路径
+        must_exist: 如果为True，路径必须存在
     
     Returns:
-        True if valid
+        有效则返回True
     
     Raises:
-        ValueError: If path is invalid
+        ValueError: 如果路径无效
     """
     if not path or not path.strip():
         raise ValueError("Path cannot be empty")
@@ -37,18 +37,18 @@ def validate_path(path: str, must_exist: bool = False) -> bool:
 
 def validate_memory_format(memory_str: str) -> bool:
     """
-    Validate memory format string
+    验证内存格式字符串
     
-    Supports: 1G, 1024M, 1T, 512K, etc.
+    支持：1G, 1024M, 1T, 512K 等
     
     Args:
-        memory_str: Memory string to validate
+        memory_str: 要验证的内存字符串
     
     Returns:
-        True if valid
+        有效则返回True
     
     Raises:
-        ValueError: If format is invalid
+        ValueError: 如果格式无效
     """
     pattern = r'^\d+[KMGT]?$'
     if not re.match(pattern, memory_str, re.IGNORECASE):
@@ -61,17 +61,17 @@ def validate_memory_format(memory_str: str) -> bool:
 
 def validate_cpu_count(cpus: int, max_cpus: Optional[int] = None) -> bool:
     """
-    Validate CPU count
+    验证CPU数量
     
     Args:
-        cpus: CPU count to validate
-        max_cpus: Optional maximum CPU limit
+        cpus: 要验证的CPU数量
+        max_cpus: 可选的最大CPU限制
     
     Returns:
-        True if valid
+        有效则返回True
     
     Raises:
-        ValueError: If CPU count is invalid
+        ValueError: 如果CPU数量无效
     """
     if cpus < 1:
         raise ValueError(f"CPU count must be at least 1, got: {cpus}")
@@ -86,13 +86,13 @@ def validate_cpu_count(cpus: int, max_cpus: Optional[int] = None) -> bool:
 
 def sanitize_job_name(name: str) -> str:
     """
-    Sanitize job name to prevent security issues
+    清理作业名称以防止安全问题
     
     Args:
-        name: Job name to sanitize
+        name: 要清理的作业名称
     
     Returns:
-        Sanitized job name
+        清理后的作业名称
     """
     # Remove or replace dangerous characters
     sanitized = re.sub(r'[^\w\-_\.]', '_', name)

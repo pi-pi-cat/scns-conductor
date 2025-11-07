@@ -6,6 +6,19 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## 📚 文档导航
+
+**完整技术文档请访问**: [docs/README.md](docs/README.md) ⭐
+
+快速链接：
+- 🔥 [Worker并发模型详解](docs/WORKER_CONCURRENCY.md)
+- 🔥 [故障容错机制](docs/FAULT_TOLERANCE_SUMMARY.md)  
+- 🔥 [API使用示例](docs/API_EXAMPLES.md)
+- 🔥 [部署指南](docs/DEPLOYMENT.md)
+- 📋 [最终更新总结](docs/FINAL_UPDATE_SUMMARY.md)
+
+---
+
 ## 🎯 项目简介
 
 SCNS-Conductor 是一个现代化的作业调度和管理系统，设计用于自动化管理计算密集型作业的完整生命周期。系统采用类似 Slurm 的 RESTful API 风格，提供简洁高效的作业提交、查询和取消接口。

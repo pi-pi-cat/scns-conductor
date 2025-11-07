@@ -1,5 +1,5 @@
 """
-Loguru-based logging configuration
+基于Loguru的日志配置
 """
 import sys
 from pathlib import Path
@@ -8,11 +8,11 @@ from loguru import logger
 
 def setup_logger(log_level: str = "INFO", log_file: str = None) -> None:
     """
-    Configure loguru logger with consistent formatting
+    配置loguru日志记录器，使用统一的格式
     
     Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Optional file path for logging to file
+        log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+        log_file: 可选的文件路径，用于将日志写入文件
     """
     # Remove default handler
     logger.remove()
@@ -44,6 +44,6 @@ def setup_logger(log_level: str = "INFO", log_file: str = None) -> None:
 
 
 def get_logger():
-    """Get the configured logger instance"""
+    """获取配置好的日志记录器实例"""
     return logger
 

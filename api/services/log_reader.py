@@ -1,5 +1,5 @@
 """
-Service for reading job log files asynchronously
+异步读取作业日志文件的服务
 """
 import os
 from typing import Tuple
@@ -10,34 +10,34 @@ from core.models import Job
 
 
 class LogReaderService:
-    """Service for reading job log files"""
+    """读取作业日志文件的服务"""
     
     @staticmethod
     async def read_log_file(file_path: str, max_lines: int = 1000) -> str:
         """
-        Read log file asynchronously with size limit
+        异步读取日志文件（带大小限制）
         
         Args:
-            file_path: Path to log file
-            max_lines: Maximum number of lines to read (from the end)
+            file_path: 日志文件路径
+            max_lines: 最多读取的行数（从末尾开始）
         
         Returns:
-            File content as string
+            文件内容字符串
         """
         if not os.path.exists(file_path):
             return ""
         
         try:
-            # Check file size
+            # 检查文件大小
             file_size = os.path.getsize(file_path)
             
-            # For small files, read directly
-            if file_size < 1024 * 1024:  # Less than 1MB
+            # 小文件直接读取
+            if file_size < 1024 * 1024:  # 小于1MB
                 async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = await f.read()
                     return content
             
-            # For large files, read last N lines
+            # 大文件读取最后N行
             async with aiofiles.open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = []
                 async for line in f:

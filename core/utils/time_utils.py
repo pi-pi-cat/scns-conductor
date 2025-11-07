@@ -1,5 +1,5 @@
 """
-Time formatting and parsing utilities
+时间格式化和解析工具
 """
 from datetime import datetime, timedelta
 from typing import Optional
@@ -7,14 +7,14 @@ from typing import Optional
 
 def format_elapsed_time(start_time: datetime, end_time: Optional[datetime] = None) -> str:
     """
-    Format elapsed time in Slurm style: day-HH:MM:SS
+    以Slurm风格格式化经过的时间：day-HH:MM:SS
     
     Args:
-        start_time: Start time
-        end_time: End time (defaults to now if not provided)
+        start_time: 开始时间
+        end_time: 结束时间（未提供时默认为当前时间）
     
     Returns:
-        Formatted string like "0-00:39:20" or "2-14:30:45"
+        格式化字符串，如 "0-00:39:20" 或 "2-14:30:45"
     """
     if end_time is None:
         end_time = datetime.utcnow()
@@ -32,13 +32,13 @@ def format_elapsed_time(start_time: datetime, end_time: Optional[datetime] = Non
 
 def format_limit_time(minutes: int) -> str:
     """
-    Format time limit from minutes to HH:MM:SS or D-HH:MM:SS
+    将时间限制从分钟格式化为 HH:MM:SS 或 D-HH:MM:SS
     
     Args:
-        minutes: Time limit in minutes
+        minutes: 以分钟为单位的时间限制
     
     Returns:
-        Formatted string like "2:00:00" or "1-12:30:00"
+        格式化字符串，如 "2:00:00" 或 "1-12:30:00"
     """
     if minutes < 0:
         return "UNLIMITED"
@@ -59,19 +59,19 @@ def format_limit_time(minutes: int) -> str:
 
 def parse_time_limit(time_str: str) -> int:
     """
-    Parse time limit string to minutes
+    解析时间限制字符串为分钟数
     
-    Supports formats:
-        - "30" -> 30 minutes
-        - "2:30" -> 2 hours 30 minutes
-        - "1:30:00" -> 1 hour 30 minutes
-        - "2-12:00:00" -> 2 days 12 hours
+    支持的格式：
+        - "30" -> 30分钟
+        - "2:30" -> 2小时30分钟
+        - "1:30:00" -> 1小时30分钟
+        - "2-12:00:00" -> 2天12小时
     
     Args:
-        time_str: Time limit string
+        time_str: 时间限制字符串
     
     Returns:
-        Time limit in minutes
+        以分钟为单位的时间限制
     """
     time_str = time_str.strip()
     

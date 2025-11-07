@@ -1,5 +1,5 @@
 """
-Thread-safe resource tracker for CPU allocation
+线程安全的CPU资源跟踪器
 """
 import threading
 from loguru import logger
@@ -11,8 +11,8 @@ from core.models import ResourceAllocation
 
 class ResourceTracker:
     """
-    Thread-safe CPU resource tracker
-    Manages available CPU resources for job scheduling
+    线程安全的CPU资源跟踪器
+    管理可用的CPU资源用于作业调度
     """
     
     def __init__(self):
@@ -24,8 +24,8 @@ class ResourceTracker:
     
     def _load_current_usage(self) -> None:
         """
-        Load current resource usage from database
-        Called during initialization to recover state
+        从数据库加载当前资源使用情况
+        在初始化时调用以恢复状态
         """
         try:
             with sync_db.get_session() as session:
@@ -48,26 +48,26 @@ class ResourceTracker:
     
     def can_allocate(self, cpus: int) -> bool:
         """
-        Check if requested CPUs can be allocated
+        检查是否可以分配请求的CPU数量
         
         Args:
-            cpus: Number of CPUs requested
+            cpus: 请求的CPU数量
         
         Returns:
-            True if allocation is possible
+            如果可以分配则返回True
         """
         with self._lock:
             return (self._used_cpus + cpus) <= self._total_cpus
     
     def allocate(self, cpus: int) -> bool:
         """
-        Attempt to allocate CPUs
+        尝试分配CPU资源
         
         Args:
-            cpus: Number of CPUs to allocate
+            cpus: 要分配的CPU数量
         
         Returns:
-            True if allocation succeeded, False otherwise
+            分配成功返回True，否则返回False
         """
         with self._lock:
             if self.can_allocate(cpus):
@@ -81,10 +81,10 @@ class ResourceTracker:
     
     def release(self, cpus: int) -> None:
         """
-        Release allocated CPUs
+        释放已分配的CPU资源
         
         Args:
-            cpus: Number of CPUs to release
+            cpus: 要释放的CPU数量
         """
         with self._lock:
             self._used_cpus = max(0, self._used_cpus - cpus)

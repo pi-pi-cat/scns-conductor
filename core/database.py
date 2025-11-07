@@ -42,17 +42,17 @@ class AsyncDatabaseManager:
         settings = get_settings()
         database_url = settings.get_database_url(async_driver=True)
 
-        # Create async engine with connection pooling
+        # 创建带连接池的异步引擎
         self._engine = create_async_engine(
             database_url,
             echo=False,
             pool_size=20,
             max_overflow=10,
-            pool_pre_ping=True,  # Verify connections before using
-            pool_recycle=3600,  # Recycle connections after 1 hour
+            pool_pre_ping=True,  # 使用前验证连接
+            pool_recycle=3600,  # 1小时后回收连接
         )
 
-        # Create session factory
+        # 创建会话工厂
         self._session_factory = async_sessionmaker(
             self._engine,
             class_=AsyncSession,
@@ -131,7 +131,7 @@ class SyncDatabaseManager:
         settings = get_settings()
         database_url = settings.get_database_url(async_driver=False)
 
-        # Create sync engine with connection pooling
+        # 创建带连接池的同步引擎
         self._engine = create_engine(
             database_url,
             echo=False,
@@ -142,12 +142,12 @@ class SyncDatabaseManager:
             poolclass=pool.QueuePool,
         )
 
-        # Enable pessimistic disconnect handling
+        # 启用悲观断连处理
         @event.listens_for(self._engine, "connect")
         def receive_connect(dbapi_conn, connection_record):
             connection_record.info["pid"] = dbapi_conn.get_backend_pid()
 
-        # Create session factory
+        # 创建会话工厂
         self._session_factory = sessionmaker(
             self._engine,
             class_=Session,
@@ -204,7 +204,7 @@ class SyncDatabaseManager:
         return self._engine
 
 
-# Global instances
+# 全局实例
 async_db = AsyncDatabaseManager()
 sync_db = SyncDatabaseManager()
 
