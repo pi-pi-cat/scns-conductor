@@ -3,12 +3,13 @@
 从 app.properties 文件和环境变量加载配置
 """
 
+from functools import lru_cache
 from typing import Optional
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
-from .utils.singleton import singleton
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from loguru import logger
 
 
 class Settings(BaseSettings):
@@ -120,8 +121,6 @@ class Settings(BaseSettings):
 
 # ========== 配置获取函数 ==========
 # 使用 functools.lru_cache 实现单例，更为 pythonic
-
-from functools import lru_cache
 
 
 @lru_cache()

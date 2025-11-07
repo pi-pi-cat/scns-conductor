@@ -12,6 +12,7 @@ from loguru import logger
 
 from core.config import get_settings
 from core.database import async_db
+from core.redis_client import redis_manager
 from core.utils.logger import setup_logger
 from .routers import jobs_router
 from .middleware import RequestIDMiddleware
@@ -36,6 +37,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async_db.init()
     logger.info("数据库已初始化")
 
+    # 初始化Redis连接（用于任务队列）
+    try:
+        redis_manager.init()
+        if not redis_manager.ping():
+            raise ConnectionError("无法连接到 Redis")
+        logger.info("Redis已初始化")
+    except Exception as e:
+        logger.error(f"Redis初始化失败: {e}")
+        raise
+
     logger.info(f"API 服务已启动，监听 {settings.API_HOST}:{settings.API_PORT}")
 
     yield
@@ -43,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 关闭阶段
     logger.info("正在关闭 SCNS-Conductor API 服务")
     await async_db.close()
+    redis_manager.close()
     logger.info("API 服务已停止")
 
 

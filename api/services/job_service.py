@@ -86,9 +86,25 @@ class JobService:
             f"cpus={total_cpus}, account={job_spec.account}"
         )
 
-        # 将作业加入执行队列（由worker的调度守护进程处理）
-        # 注意：这将由worker的调度守护进程处理
-        # 我们只需将其标记为PENDING，调度器会自动拾取
+        # 将作业加入RQ执行队列
+        # Worker的调度守护进程会监测PENDING作业并分配资源
+        # Executor会等待作业被调度后开始执行
+        # 注意：使用字符串路径避免循环导入
+        try:
+            queue = redis_manager.get_queue()
+            rq_job = queue.enqueue(
+                "worker.executor.execute_job_task",
+                job_id,
+                job_timeout=3600 * 24,  # 24小时超时
+            )
+            logger.info(f"Job {job_id} enqueued to RQ: {rq_job.id}")
+        except Exception as e:
+            logger.error(f"Failed to enqueue job {job_id}: {e}")
+            # 入队失败，回滚作业状态
+            job.state = JobState.FAILED
+            job.error_msg = f"Failed to enqueue job: {e}"
+            await db.commit()
+            raise
 
         return job_id
 
