@@ -1,7 +1,7 @@
 """
 数据库连接管理 - 支持异步和同步两种模式
-- 异步连接用于 FastAPI（使用 asyncpg）
-- 同步连接用于 RQ workers（使用 psycopg2）
+- 异步用于 FastAPI（使用 asyncpg）
+- 同步用于 RQ workers（使用 psycopg2）
 """
 
 from contextlib import asynccontextmanager, contextmanager
@@ -26,8 +26,8 @@ from .exceptions import DatabaseNotInitializedException
 @singleton
 class AsyncDatabaseManager:
     """
-    Async database connection manager for FastAPI
-    Uses asyncpg driver for high-performance async operations
+    FastAPI 异步数据库连接管理器
+    使用 asyncpg 驱动实现高性能异步数据库操作
     """
 
     def __init__(self):
@@ -35,9 +35,9 @@ class AsyncDatabaseManager:
         self._session_factory: Optional[async_sessionmaker[AsyncSession]] = None
 
     def init(self) -> None:
-        """Initialize async database engine and session factory"""
+        """初始化异步数据库引擎和会话工厂"""
         if self._engine is not None:
-            logger.warning("AsyncDatabaseManager already initialized")
+            logger.warning("AsyncDatabaseManager 已经初始化过")
             return
 
         settings = get_settings()
@@ -50,7 +50,7 @@ class AsyncDatabaseManager:
             pool_size=20,
             max_overflow=10,
             pool_pre_ping=True,  # 使用前验证连接
-            pool_recycle=3600,  # 1小时后回收连接
+            pool_recycle=3600,  # 1 小时后回收连接
         )
 
         # 创建会话工厂
@@ -62,20 +62,20 @@ class AsyncDatabaseManager:
             autoflush=False,
         )
 
-        logger.info("Async database manager initialized")
+        logger.info("异步数据库管理器初始化完成")
 
     async def close(self) -> None:
-        """Close database engine and cleanup connections"""
+        """关闭数据库引擎并清理连接"""
         if self._engine:
             await self._engine.dispose()
-            logger.info("Async database connections closed")
+            logger.info("异步数据库连接已关闭")
 
     @asynccontextmanager
     async def get_session(self) -> AsyncIterator[AsyncSession]:
         """
-        Get database session as async context manager
+        获取一个异步数据库会话（上下文管理器）
 
-        Usage:
+        用法示例：
             async with async_db.get_session() as session:
                 result = await session.execute(query)
         """
@@ -100,15 +100,15 @@ class AsyncDatabaseManager:
         async with self._engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
-        logger.info("Database tables created")
+        logger.info("数据库表已创建")
 
     @property
     def engine(self) -> AsyncEngine:
-        """Get the async engine instance"""
+        """获取异步引擎实例"""
         if self._engine is None:
             raise DatabaseNotInitializedException("AsyncDatabaseManager")
         return self._engine
-    
+
     def is_initialized(self) -> bool:
         """检查是否已初始化"""
         return self._engine is not None
@@ -117,8 +117,8 @@ class AsyncDatabaseManager:
 @singleton
 class SyncDatabaseManager:
     """
-    Sync database connection manager for RQ workers
-    Uses psycopg2 driver for compatibility with RQ
+    RQ workers 同步数据库连接管理器
+    使用 psycopg2 驱动以兼容 RQ
     """
 
     def __init__(self):
@@ -126,9 +126,9 @@ class SyncDatabaseManager:
         self._session_factory: Optional[sessionmaker[Session]] = None
 
     def init(self) -> None:
-        """Initialize sync database engine and session factory"""
+        """初始化同步数据库引擎和会话工厂"""
         if self._engine is not None:
-            logger.warning("SyncDatabaseManager already initialized")
+            logger.warning("SyncDatabaseManager 已经初始化过")
             return
 
         settings = get_settings()
@@ -145,7 +145,7 @@ class SyncDatabaseManager:
             poolclass=pool.QueuePool,
         )
 
-        # 启用悲观断连处理
+        # 启用断连检查
         @event.listens_for(self._engine, "connect")
         def receive_connect(dbapi_conn, connection_record):
             connection_record.info["pid"] = dbapi_conn.get_backend_pid()
@@ -159,20 +159,20 @@ class SyncDatabaseManager:
             autoflush=False,
         )
 
-        logger.info("Sync database manager initialized")
+        logger.info("同步数据库管理器初始化完成")
 
     def close(self) -> None:
-        """Close database engine and cleanup connections"""
+        """关闭数据库引擎并清理连接"""
         if self._engine:
             self._engine.dispose()
-            logger.info("Sync database connections closed")
+            logger.info("同步数据库连接已关闭")
 
     @contextmanager
     def get_session(self) -> Iterator[Session]:
         """
-        Get database session as sync context manager
+        获取一个同步数据库会话（上下文管理器）
 
-        Usage:
+        用法示例：
             with sync_db.get_session() as session:
                 result = session.execute(query)
         """
@@ -195,15 +195,15 @@ class SyncDatabaseManager:
             raise DatabaseNotInitializedException("SyncDatabaseManager")
 
         SQLModel.metadata.create_all(self._engine)
-        logger.info("Database tables created")
+        logger.info("数据库表已创建")
 
     @property
     def engine(self):
-        """Get the sync engine instance"""
+        """获取同步引擎实例"""
         if self._engine is None:
             raise DatabaseNotInitializedException("SyncDatabaseManager")
         return self._engine
-    
+
     def is_initialized(self) -> bool:
         """检查是否已初始化"""
         return self._engine is not None
@@ -214,12 +214,12 @@ async_db = AsyncDatabaseManager()
 sync_db = SyncDatabaseManager()
 
 
-# FastAPI 依赖
+# FastAPI 依赖项
 async def get_async_session() -> AsyncIterator[AsyncSession]:
     """
-    FastAPI 依赖函数，用于获取异步数据库会话
+    FastAPI 依赖函数：获取异步数据库会话
 
-    使用方法:
+    用法示例:
         @app.get("/items")
         async def get_items(session: AsyncSession = Depends(get_async_session)):
             ...
