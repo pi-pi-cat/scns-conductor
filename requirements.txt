@@ -1,0 +1,26 @@
+# FastAPI and Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+
+# Database - SQLModel (包含 SQLAlchemy 和 Pydantic 集成)
+sqlmodel==0.0.14
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Redis and Task Queue
+redis==5.0.1
+rq==1.15.1
+
+# Logging
+loguru==0.7.2
+
+# Async File Operations
+aiofiles==23.2.1
+
+# Utilities
+python-dateutil==2.8.2
+

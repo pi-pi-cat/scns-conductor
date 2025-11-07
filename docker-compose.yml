@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: scns-postgres
+    environment:
+      POSTGRES_DB: scns_conductor
+      POSTGRES_USER: scns_user
+      POSTGRES_PASSWORD: scns_password_2024
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scns_user -d scns_conductor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scns-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: scns-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scns-network
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: scns-api
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: scns_conductor
+      POSTGRES_USER: scns_user
+      POSTGRES_PASSWORD: scns_password_2024
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      LOG_LEVEL: INFO
+      LOG_FILE: /var/log/scns-conductor/api.log
+    volumes:
+      - job_data:/var/scns-conductor/jobs
+      - api_logs:/var/log/scns-conductor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - scns-network
+    restart: unless-stopped
+
+  # Worker Service
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: scns-worker
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: scns_conductor
+      POSTGRES_USER: scns_user
+      POSTGRES_PASSWORD: scns_password_2024
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      NODE_NAME: worker-node-01
+      TOTAL_CPUS: 8
+      DEFAULT_PARTITION: default
+      LOG_LEVEL: INFO
+      LOG_FILE: /var/log/scns-conductor/worker.log
+      JOB_WORK_BASE_DIR: /var/scns-conductor/jobs
+      SCRIPT_DIR: /var/scns-conductor/scripts
+    volumes:
+      - job_data:/var/scns-conductor/jobs
+      - worker_logs:/var/log/scns-conductor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - scns-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  job_data:
+    driver: local
+  api_logs:
+    driver: local
+  worker_logs:
+    driver: local
+
+networks:
+  scns-network:
+    driver: bridge
+
