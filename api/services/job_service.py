@@ -35,11 +35,11 @@ class JobService:
         """
         向系统提交新作业
 
-        Args:
+        参数:
             request: 作业提交请求
             db: 数据库会话
 
-        Returns:
+        返回:
             作业ID
         """
         job_spec = request.job
@@ -82,14 +82,13 @@ class JobService:
         await db.commit()
 
         logger.info(
-            f"Job submitted: id={job_id}, name={job_spec.name}, "
+            f"作业已提交: id={job_id}, name={job_spec.name}, "
             f"cpus={total_cpus}, account={job_spec.account}"
         )
 
-        # 将作业加入RQ执行队列
-        # Worker的调度守护进程会监测PENDING作业并分配资源
-        # Executor会等待作业被调度后开始执行
-        # 注意：使用字符串路径避免循环导入
+        # 将作业放入RQ调度队列
+        # Worker的调度守护进程会监测PENDING作业，分配资源后Executor开始执行
+        # 注意：使用字符串路径以避免循环导入
         try:
             queue = redis_manager.get_queue()
             rq_job = queue.enqueue(
@@ -97,12 +96,12 @@ class JobService:
                 job_id,
                 job_timeout=3600 * 24,  # 24小时超时
             )
-            logger.info(f"Job {job_id} enqueued to RQ: {rq_job.id}")
+            logger.info(f"作业 {job_id} 已入队至RQ: {rq_job.id}")
         except Exception as e:
-            logger.error(f"Failed to enqueue job {job_id}: {e}")
-            # 入队失败，回滚作业状态
+            logger.error(f"作业 {job_id} 入队失败: {e}")
+            # 入队失败，回滚作业状态为失败
             job.state = JobState.FAILED
-            job.error_msg = f"Failed to enqueue job: {e}"
+            job.error_msg = f"作业入队失败: {e}"
             await db.commit()
             raise
 
@@ -111,17 +110,17 @@ class JobService:
     @staticmethod
     async def query_job(job_id: int, db: AsyncSession) -> JobQueryResponse:
         """
-        Query job information
+        查询作业信息
 
-        Args:
-            job_id: Job ID
-            db: Database session
+        参数:
+            job_id: 作业ID
+            db: 数据库会话
 
-        Returns:
-            Job query response
+        返回:
+            作业查询响应
 
-        Raises:
-            JobNotFoundException: If job not found
+        异常:
+            JobNotFoundException: 未找到对应作业时抛出
         """
         # 查询作业
         stmt = select(Job).where(Job.id == job_id)
@@ -134,11 +133,11 @@ class JobService:
         # 计算时间信息
         time_info = JobService._build_time_info(job)
 
-        # 读取日志
+        # 读取日志文件内容
         stdout_content, stderr_content = await LogReaderService.get_job_logs(job)
         job_log = JobLog(stdout=stdout_content, stderr=stderr_content)
 
-        # 构建详细信息
+        # 构建作业详细信息
         detail = JobDetail(
             job_name=job.name,
             user=job.account,
@@ -152,7 +151,7 @@ class JobService:
             account=job.account,
         )
 
-        # 构建响应
+        # 构建响应体
         response = JobQueryResponse(
             job_id=str(job.id),
             state=job.state,
@@ -167,14 +166,14 @@ class JobService:
     @staticmethod
     async def cancel_job(job_id: int, db: AsyncSession) -> None:
         """
-        Cancel a job (idempotent operation)
+        取消作业（幂等操作）
 
-        Args:
-            job_id: Job ID
-            db: Database session
+        参数:
+            job_id: 作业ID
+            db: 数据库会话
 
-        Raises:
-            JobNotFoundException: If job not found
+        异常:
+            JobNotFoundException: 未找到作业时抛出
         """
         # 查询作业
         stmt = select(Job).where(Job.id == job_id)
@@ -184,23 +183,23 @@ class JobService:
         if job is None:
             raise JobNotFoundException(job_id)
 
-        # 检查作业是否可以取消
+        # 检查作业状态，已终止无需重复取消
         if job.state in [JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED]:
-            # 幂等性：已经处于终止状态
-            logger.info(f"Job {job_id} already in terminal state: {job.state}")
+            # 幂等：已在终止状态
+            logger.info(f"作业 {job_id} 已经处于终止状态: {job.state}")
             return
 
-        # 如果作业正在运行，尝试终止进程
+        # 如果作业正在运行，尝试终止作业进程
         if job.state == JobState.RUNNING:
             await JobService._kill_job_process(job_id, db)
 
-        # 更新作业状态
+        # 更新作业状态为已取消
         job.state = JobState.CANCELLED
         job.end_time = datetime.utcnow()
         if not job.exit_code:
-            job.exit_code = "-1:15"  # SIGTERM
+            job.exit_code = "-1:15"  # SIGTERM信号
 
-        # 释放资源
+        # 释放资源分配
         stmt = select(ResourceAllocation).where(
             ResourceAllocation.job_id == job_id, ResourceAllocation.released == False
         )
@@ -213,55 +212,55 @@ class JobService:
 
         await db.commit()
 
-        logger.info(f"Job {job_id} cancelled successfully")
+        logger.info(f"作业 {job_id} 取消成功")
 
     @staticmethod
     async def _kill_job_process(job_id: int, db: AsyncSession) -> None:
         """
-        Kill running job process
+        杀死正在运行的作业进程
 
-        Args:
-            job_id: Job ID
-            db: Database session
+        参数:
+            job_id: 作业ID
+            db: 数据库会话
         """
-        # Query process ID from resource allocation
+        # 查询资源分配表，获取对应的进程ID
         stmt = select(ResourceAllocation).where(ResourceAllocation.job_id == job_id)
         result = await db.execute(stmt)
         allocation = result.scalar_one_or_none()
 
         if allocation and allocation.process_id:
             try:
-                # 向进程组发送SIGTERM信号
+                # 向进程组发送SIGTERM信号以终止作业
                 os.killpg(os.getpgid(allocation.process_id), signal.SIGTERM)
                 logger.info(
-                    f"Sent SIGTERM to job {job_id} (PID: {allocation.process_id})"
+                    f"已向作业 {job_id} 发送SIGTERM信号 (PID: {allocation.process_id})"
                 )
             except ProcessLookupError:
                 logger.warning(
-                    f"Process {allocation.process_id} for job {job_id} not found"
+                    f"未找到作业 {job_id} 对应的进程 {allocation.process_id}"
                 )
             except Exception as e:
-                logger.error(f"Failed to kill job {job_id} process: {e}")
+                logger.error(f"终止作业 {job_id} 进程失败: {e}")
 
     @staticmethod
     def _build_time_info(job: Job) -> TimeInfo:
         """
-        Build time information for job
+        构建作业时间信息
 
-        Args:
-            job: Job model
+        参数:
+            job: Job模型实例
 
-        Returns:
-            TimeInfo object
+        返回:
+            TimeInfo 对象
         """
-        # 计算经过的时间
+        # 计算作业已运行时间
         if job.start_time:
             end_time = job.end_time or datetime.utcnow()
             elapsed_time = format_elapsed_time(job.start_time, end_time)
         else:
             elapsed_time = "0-00:00:00"
 
-        # 格式化时间限制
+        # 格式化时间限制信息
         if job.time_limit:
             limit_time = format_limit_time(job.time_limit)
         else:
