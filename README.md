@@ -11,9 +11,12 @@
 **完整技术文档请访问**: [docs/README.md](docs/README.md) ⭐
 
 快速链接：
+- 🔥 [Worker模块优化总结](docs/WORKER_MODULE_OPTIMIZATION_SUMMARY.md) ⭐⭐⭐ **NEW!**
 - 🔥 [Worker并发模型详解](docs/WORKER_CONCURRENCY.md)
 - 🔥 [故障容错机制](docs/FAULT_TOLERANCE_SUMMARY.md)  
 - 🔥 [API使用示例](docs/API_EXAMPLES.md)
+- 🔥 [Worker模块改进详解](docs/WORKER_IMPROVEMENTS_DONE.md) ⭐⭐
+- 🔥 [API模块改进详解](docs/API_IMPROVEMENTS_DONE.md)
 - 🔥 [部署指南](docs/DEPLOYMENT.md)
 - 📋 [最终更新总结](docs/FINAL_UPDATE_SUMMARY.md)
 

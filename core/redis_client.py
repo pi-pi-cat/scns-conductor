@@ -10,6 +10,7 @@ from loguru import logger
 
 from .config import get_settings
 from .utils.singleton import singleton
+from .exceptions import RedisNotInitializedException
 
 
 @singleton
@@ -72,7 +73,7 @@ class RedisManager:
             Redis client instance
         """
         if self._redis is None:
-            raise RuntimeError("RedisManager not initialized. Call init() first.")
+            raise RedisNotInitializedException()
         return self._redis
     
     def get_queue(self) -> Queue:
@@ -83,7 +84,7 @@ class RedisManager:
             RQ Queue instance
         """
         if self._queue is None:
-            raise RuntimeError("RedisManager not initialized. Call init() first.")
+            raise RedisNotInitializedException()
         return self._queue
     
     @contextmanager
@@ -96,7 +97,7 @@ class RedisManager:
                 client.set('key', 'value')
         """
         if self._redis is None:
-            raise RuntimeError("RedisManager not initialized. Call init() first.")
+            raise RedisNotInitializedException()
         
         try:
             yield self._redis
@@ -130,11 +131,15 @@ class RedisManager:
             Job ID
         """
         if self._queue is None:
-            raise RuntimeError("RedisManager not initialized")
+            raise RedisNotInitializedException()
         
         job = self._queue.enqueue(func, *args, **kwargs)
         logger.debug(f"Enqueued job: {job.id}")
         return job.id
+    
+    def is_initialized(self) -> bool:
+        """检查是否已初始化"""
+        return self._redis is not None and self._queue is not None
 
 
 # Global instance

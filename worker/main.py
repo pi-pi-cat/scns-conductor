@@ -1,13 +1,9 @@
 """
-Worker main entry point
-Runs RQ worker with scheduler daemon
+Worker 主入口（优化版）
+运行 RQ Worker 和调度器守护进程
 """
 
-import signal
 import sys
-import threading
-import time
-
 from rq import Worker
 from loguru import logger
 
@@ -15,83 +11,10 @@ from core.config import get_settings
 from core.database import sync_db
 from core.redis_client import redis_manager
 from core.utils.logger import setup_logger
-from .scheduler import ResourceScheduler
+from .daemon import SchedulerDaemon
+from .signal_handler import SignalHandler
 from .executor import execute_job_task
 from .recovery import RecoveryManager
-
-
-class SchedulerDaemon(threading.Thread):
-    """
-    Scheduler daemon thread
-    Periodically checks for pending jobs and schedules them
-    """
-
-    def __init__(self, check_interval: int = 5):
-        """
-        Initialize scheduler daemon
-
-        Args:
-            check_interval: Seconds between scheduling checks
-        """
-        super().__init__(daemon=True, name="SchedulerDaemon")
-        self.check_interval = check_interval
-        self.scheduler = ResourceScheduler()
-        self._stop_event = threading.Event()
-
-    def run(self) -> None:
-        """Main daemon loop"""
-        logger.info("Scheduler daemon started")
-
-        while not self._stop_event.is_set():
-            try:
-                # Schedule pending jobs
-                scheduled_jobs = self.scheduler.schedule_pending_jobs()
-
-                if scheduled_jobs:
-                    logger.info(f"Scheduled {len(scheduled_jobs)} jobs")
-
-                # Log resource statistics periodically
-                if int(time.time()) % 60 == 0:  # Every minute
-                    stats = self.scheduler.get_resource_stats()
-                    logger.info(
-                        f"Resource stats: {stats['used_cpus']}/{stats['total_cpus']} CPUs "
-                        f"({stats['utilization']:.1f}% utilization)"
-                    )
-
-            except Exception as e:
-                logger.error(f"Scheduler daemon error: {e}", exc_info=True)
-
-            # Wait before next check
-            self._stop_event.wait(self.check_interval)
-
-        logger.info("Scheduler daemon stopped")
-
-    def stop(self) -> None:
-        """Stop the daemon"""
-        self._stop_event.set()
-
-
-def setup_signal_handlers(worker: Worker, scheduler_daemon: SchedulerDaemon) -> None:
-    """
-    Setup signal handlers for graceful shutdown
-
-    Args:
-        worker: RQ worker instance
-        scheduler_daemon: Scheduler daemon instance
-    """
-
-    def signal_handler(signum, frame):
-        sig_name = signal.Signals(signum).name
-        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
-
-        # Stop scheduler daemon
-        scheduler_daemon.stop()
-
-        # Stop worker
-        worker.request_stop()
-
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
 
 
 def main() -> None:
@@ -168,40 +91,45 @@ def main() -> None:
     logger.info(f"总 CPU 核心数: {settings.TOTAL_CPUS}")
     logger.info("-" * 60)
 
-    # 启动调度器守护进程
-    scheduler_daemon = SchedulerDaemon(check_interval=5)
-    scheduler_daemon.start()
-    logger.info("✓ 调度器守护进程已启动")
-
-    # 设置信号处理器（优雅退出）
-    setup_signal_handlers(worker, scheduler_daemon)
-
-    # 运行 Worker
+    # 使用上下文管理器启动调度器守护进程
     try:
-        logger.info("=" * 60)
-        logger.info("Worker 已就绪，等待作业...")
-        logger.info("=" * 60)
-        worker.work(
-            burst=settings.WORKER_BURST,
-            with_scheduler=False,  # 使用自定义调度器
-        )
-    except KeyboardInterrupt:
-        logger.info("Worker 被用户中断")
-    except Exception as e:
-        logger.error(f"Worker 运行错误: {e}", exc_info=True)
+        with SchedulerDaemon(check_interval=5) as scheduler_daemon:
+            logger.info("✓ 调度器守护进程已启动")
+            
+            # 设置信号处理器（链式调用）
+            signal_handler = SignalHandler()
+            signal_handler \
+                .on_shutdown(lambda: logger.info("🛑 正在停止 Worker...")) \
+                .on_shutdown(scheduler_daemon.stop) \
+                .on_shutdown(worker.request_stop) \
+                .register()
+            
+            # 运行 Worker
+            try:
+                logger.info("=" * 60)
+                logger.info("🚀 Worker 已就绪，等待作业...")
+                logger.info("=" * 60)
+                worker.work(
+                    burst=settings.WORKER_BURST,
+                    with_scheduler=False,  # 使用自定义调度器
+                )
+            except KeyboardInterrupt:
+                logger.info("⚠️  Worker 被用户中断")
+            except Exception as e:
+                logger.error(f"❌ Worker 运行错误: {e}", exc_info=True)
+        
+        # 调度器守护进程已自动清理（上下文管理器）
+        
     finally:
         # 清理资源
         logger.info("=" * 60)
         logger.info("正在关闭 Worker...")
         logger.info("=" * 60)
 
-        scheduler_daemon.stop()
-        scheduler_daemon.join(timeout=10)
-
         sync_db.close()
         redis_manager.close()
 
-        logger.info("Worker 已安全停止")
+        logger.info("✅ Worker 已安全停止")
         logger.info("=" * 60)
 
 

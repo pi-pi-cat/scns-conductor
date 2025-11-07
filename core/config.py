@@ -118,27 +118,36 @@ class Settings(BaseSettings):
             Path(self.LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
 
 
-@singleton
-class SettingsManager:
-    """Singleton settings manager"""
+# ========== 配置获取函数 ==========
+# 使用functools.lru_cache实现单例，更pythonic的方式
 
-    def __init__(self):
-        self._settings: Optional[Settings] = None
-
-    def get_settings(self) -> Settings:
-        """Get or create settings instance"""
-        if self._settings is None:
-            self._settings = Settings()
-        return self._settings
-
-    def reload_settings(self) -> Settings:
-        """Reload settings from file"""
-        self._settings = Settings()
-        return self._settings
+from functools import lru_cache
 
 
-# 获取配置的便捷函数
+@lru_cache()
 def get_settings() -> Settings:
-    """Get application settings"""
-    manager = SettingsManager()
-    return manager.get_settings()
+    """
+    获取配置实例（单例）
+    
+    使用lru_cache确保单例，比自定义单例装饰器更pythonic
+    
+    Returns:
+        配置实例
+    """
+    settings = Settings()
+    logger.info("Settings loaded")
+    return settings
+
+
+def reload_settings() -> Settings:
+    """
+    重新加载配置
+    
+    清除lru_cache缓存并重新加载配置
+    
+    Returns:
+        新的配置实例
+    """
+    get_settings.cache_clear()
+    logger.info("Settings reloaded")
+    return get_settings()

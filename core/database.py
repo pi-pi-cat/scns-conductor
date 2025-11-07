@@ -20,6 +20,7 @@ from loguru import logger
 
 from .config import get_settings
 from .utils.singleton import singleton
+from .exceptions import DatabaseNotInitializedException
 
 
 @singleton
@@ -79,9 +80,7 @@ class AsyncDatabaseManager:
                 result = await session.execute(query)
         """
         if self._session_factory is None:
-            raise RuntimeError(
-                "AsyncDatabaseManager not initialized. Call init() first."
-            )
+            raise DatabaseNotInitializedException("AsyncDatabaseManager")
 
         async with self._session_factory() as session:
             try:
@@ -96,7 +95,7 @@ class AsyncDatabaseManager:
     async def create_tables(self) -> None:
         """创建所有数据库表（用于开发/测试）"""
         if self._engine is None:
-            raise RuntimeError("AsyncDatabaseManager not initialized")
+            raise DatabaseNotInitializedException("AsyncDatabaseManager")
 
         async with self._engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
@@ -107,8 +106,12 @@ class AsyncDatabaseManager:
     def engine(self) -> AsyncEngine:
         """Get the async engine instance"""
         if self._engine is None:
-            raise RuntimeError("AsyncDatabaseManager not initialized")
+            raise DatabaseNotInitializedException("AsyncDatabaseManager")
         return self._engine
+    
+    def is_initialized(self) -> bool:
+        """检查是否已初始化"""
+        return self._engine is not None
 
 
 @singleton
@@ -174,9 +177,7 @@ class SyncDatabaseManager:
                 result = session.execute(query)
         """
         if self._session_factory is None:
-            raise RuntimeError(
-                "SyncDatabaseManager not initialized. Call init() first."
-            )
+            raise DatabaseNotInitializedException("SyncDatabaseManager")
 
         session = self._session_factory()
         try:
@@ -191,7 +192,7 @@ class SyncDatabaseManager:
     def create_tables(self) -> None:
         """创建所有数据库表（用于开发/测试）"""
         if self._engine is None:
-            raise RuntimeError("SyncDatabaseManager not initialized")
+            raise DatabaseNotInitializedException("SyncDatabaseManager")
 
         SQLModel.metadata.create_all(self._engine)
         logger.info("Database tables created")
@@ -200,8 +201,12 @@ class SyncDatabaseManager:
     def engine(self):
         """Get the sync engine instance"""
         if self._engine is None:
-            raise RuntimeError("SyncDatabaseManager not initialized")
+            raise DatabaseNotInitializedException("SyncDatabaseManager")
         return self._engine
+    
+    def is_initialized(self) -> bool:
+        """检查是否已初始化"""
+        return self._engine is not None
 
 
 # 全局实例
