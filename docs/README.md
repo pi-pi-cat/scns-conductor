@@ -34,7 +34,12 @@
 
 | 文档 | 描述 | 适合人群 |
 |------|------|---------|
+| [Worker 模块优化总结](./WORKER_MODULE_OPTIMIZATION_SUMMARY.md) | Worker 模块完整优化总结（推荐阅读）| 所有开发者 ⭐⭐⭐ |
 | [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md) | Python 高级特性应用和代码质量提升 | 开发者 ⭐ |
+| [API 模块改进分析](./API_IMPROVEMENTS_ANALYSIS.md) | API 模块优化详解（装饰器、中间件） | 开发者 ⭐ |
+| [API 模块改进完成](./API_IMPROVEMENTS_DONE.md) | API 模块优化完成报告 | 开发者 |
+| [Worker 模块改进分析](./WORKER_IMPROVEMENTS_ANALYSIS.md) | Worker 模块优化详解（设计模式） | 开发者 ⭐⭐ |
+| [Worker 模块改进完成](./WORKER_IMPROVEMENTS_DONE.md) | Worker 模块优化完成报告 | 开发者 ⭐⭐ |
 | [重构笔记](./REFACTORING_NOTES.md) | 代码重构历史和技术细节 | 开发者 |
 | [中文化完成报告](./CHINESE_TRANSLATION_COMPLETE.md) | 代码注释中文化详情 | 维护者 |
 
@@ -61,9 +66,11 @@
 ### 开发者深入学习
 1. 📖 [架构设计](./ARCHITECTURE.md) - 理解系统架构
 2. 📖 [项目结构](./PROJECT_STRUCTURE.md) - 熟悉代码组织
-3. 📖 [故障容错机制（详细版）](./FAULT_TOLERANCE.md) - 深入理解容错
-4. 📖 [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md) - 提升代码质量
-5. 📖 [设计决策](./DESIGN_DECISIONS.md) - 了解技术选型
+3. 📖 [Worker 模块改进完成](./WORKER_IMPROVEMENTS_DONE.md) - Worker 最新优化 ⭐⭐
+4. 📖 [API 模块改进完成](./API_IMPROVEMENTS_DONE.md) - API 最新优化
+5. 📖 [故障容错机制（详细版）](./FAULT_TOLERANCE.md) - 深入理解容错
+6. 📖 [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md) - 提升代码质量
+7. 📖 [设计决策](./DESIGN_DECISIONS.md) - 了解技术选型
 
 ### 运维部署
 1. 📖 [部署指南](./DEPLOYMENT.md) - 生产环境部署
@@ -95,6 +102,8 @@
 #### 🔍 深入解析
 - [故障容错机制（详细版）](./FAULT_TOLERANCE.md)
 - [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md)
+- [API 模块改进分析](./API_IMPROVEMENTS_ANALYSIS.md)
+- [Worker 模块改进分析](./WORKER_IMPROVEMENTS_ANALYSIS.md)
 - [设计决策](./DESIGN_DECISIONS.md)
 
 #### 📝 项目记录
@@ -108,9 +117,12 @@
 ## 🔗 快速链接
 
 ### 核心概念（必读 ⭐）
+- 🔥 [Worker 模块优化总结](./WORKER_MODULE_OPTIMIZATION_SUMMARY.md) - **Worker 模块完整优化总结** ⭐⭐⭐
 - 🔥 [Worker 并发模型详解](./WORKER_CONCURRENCY.md) - **理解系统如何并发执行作业**
 - 🔥 [故障容错机制总结](./FAULT_TOLERANCE_SUMMARY.md) - **理解系统可靠性保障**
 - 🔥 [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md) - **提升代码质量的实用指南**
+- 🔥 [Worker 模块改进完成](./WORKER_IMPROVEMENTS_DONE.md) - **Worker 模块最新优化详解** ⭐⭐
+- 🔥 [API 模块改进完成](./API_IMPROVEMENTS_DONE.md) - **API 模块最新优化详解**
 
 ### 最新更新
 - 📅 [最终更新总结](./FINAL_UPDATE_SUMMARY.md) - **查看本次更新的所有内容（文档+中文化）** ⭐⭐⭐
@@ -158,18 +170,21 @@
 | 如何扩展系统并发能力？ | [Worker 并发模型](./WORKER_CONCURRENCY.md) |
 | 为什么选择 SQLModel？ | [设计决策](./DESIGN_DECISIONS.md) |
 | 如何改进代码质量？ | [高级 OOP 改进建议](./ADVANCED_OOP_IMPROVEMENTS.md) |
+| Worker 模块如何优化的？ | [Worker 模块改进完成](./WORKER_IMPROVEMENTS_DONE.md) |
+| API 模块如何优化的？ | [API 模块改进完成](./API_IMPROVEMENTS_DONE.md) |
 | 数据库表结构是什么？ | [架构设计](./ARCHITECTURE.md) |
 
 ---
 
 ## 📈 文档统计
 
-- **文档总数**: 16 个（新增：最终更新总结）
-- **Python文件**: 35 个（全部中文化 ✅）
-- **文档总行数**: 5,753+ 行
+- **文档总数**: 21 个（新增：Worker 模块优化总结）
+- **Python文件**: 39 个（全部中文化 ✅）
+- **文档总行数**: 8,200+ 行
 - **最后更新**: 2025-11-07
 - **维护状态**: ✅ 活跃维护中
 - **中文化进度**: 100% ✅
+- **设计模式应用**: 上下文管理器、策略模式、观察者模式、模板方法模式 ✅
 
 ---
 
