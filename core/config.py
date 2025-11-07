@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = Field(
         default="scns_conductor", description="PostgreSQL 数据库名称"
     )
-    POSTGRES_USER: str = Field(default="scns_user", description="PostgreSQL 用户名")
-    POSTGRES_PASSWORD: str = Field(default="", description="PostgreSQL 密码")
+    POSTGRES_USER: str = Field(default="scnsqap", description="PostgreSQL 用户名")
+    POSTGRES_PASSWORD: str = Field(default="Abcd123456", description="PostgreSQL 密码")
 
     # Redis 配置
     REDIS_HOST: str = Field(default="localhost", description="Redis 主机")

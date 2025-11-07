@@ -3,29 +3,29 @@
 """
 
 from typing import Dict
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, RootModel
 
 from core.utils.validators import validate_memory_format
 from core.utils.time_utils import parse_time_limit
 
 
-class JobEnvironment(BaseModel):
+class JobEnvironment(RootModel[Dict[str, str]]):
     """
-    作业环境变量
+    作业环境变量（Pydantic v2）
     支持任意键值对作为环境变量
     """
 
-    __root__: Dict[str, str] = Field(default_factory=dict)
+    root: Dict[str, str] = Field(default_factory=dict)
 
     def dict(self, **kwargs):
         """重载dict方法，直接返回根字典"""
-        return self.__root__
+        return self.root
 
     def __iter__(self):
-        return iter(self.__root__)
+        return iter(self.root)
 
     def __getitem__(self, item):
-        return self.__root__[item]
+        return self.root[item]
 
 
 class JobSpec(BaseModel):

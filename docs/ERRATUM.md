@@ -86,9 +86,89 @@ logger.info("Redis已初始化")
 
 ---
 
+## 🔴 严重问题（已修复） - 续
+
+### 4. ❌ SQLModel 外键定义错误
+
+**问题描述**:
+- `core/models.py` 中 `ResourceAllocation` 模型的 `job_id` 字段同时使用了 `sa_column` 和 `foreign_key` 参数
+- SQLModel 不支持这种组合
+
+**错误信息**:
+```python
+RuntimeError: Passing foreign_key is not supported when also passing a sa_column
+```
+
+**影响**:
+- 无法启动 API 服务
+- 模型初始化失败
+
+**修复方案**:
+```python
+# ❌ 错误的写法
+job_id: int = Field(
+    sa_column=Column(BigInteger, nullable=False, unique=True),
+    foreign_key="jobs.id",  # 不能与 sa_column 同时使用
+    description="作业ID"
+)
+
+# ✅ 正确的写法
+job_id: int = Field(
+    sa_column=Column(
+        BigInteger,
+        ForeignKey("jobs.id"),  # 在 Column 中定义外键
+        nullable=False,
+        unique=True
+    ),
+    description="作业ID"
+)
+```
+
+**状态**: ✅ 已修复
+
+---
+
+### 5. ❌ Pydantic v2 RootModel 兼容性
+
+**问题描述**:
+- `api/schemas/job_submit.py` 中 `JobEnvironment` 使用了 Pydantic v1 的 `__root__` 语法
+- Pydantic v2 已废弃 `__root__`，需要使用 `RootModel`
+
+**错误信息**:
+```python
+TypeError: To define root models, use `pydantic.RootModel` rather than a field called '__root__'
+```
+
+**影响**:
+- 无法启动 API 服务
+- Schema 初始化失败
+
+**修复方案**:
+```python
+# ❌ Pydantic v1 写法
+class JobEnvironment(BaseModel):
+    __root__: Dict[str, str] = Field(default_factory=dict)
+    
+    def dict(self, **kwargs):
+        return self.__root__
+
+# ✅ Pydantic v2 写法
+from pydantic import RootModel
+
+class JobEnvironment(RootModel[Dict[str, str]]):
+    root: Dict[str, str] = Field(default_factory=dict)
+    
+    def dict(self, **kwargs):
+        return self.root
+```
+
+**状态**: ✅ 已修复
+
+---
+
 ## 🟡 潜在问题（已优化）
 
-### 4. ⚠️ 循环导入风险
+### 6. ⚠️ 循环导入风险
 
 **问题描述**:
 - 在 API 服务中直接导入 worker 模块可能导致循环导入
@@ -161,6 +241,8 @@ queue.enqueue("worker.executor.execute_job_task", job_id)
 | logger 未导入 | 🔴 严重 | ✅ 已修复 | `core/config.py` |
 | 缺少 RQ 入队逻辑 | 🔴 严重 | ✅ 已修复 | `api/services/job_service.py` |
 | Redis 未初始化 | 🔴 严重 | ✅ 已修复 | `api/main.py` |
+| SQLModel 外键定义错误 | 🔴 严重 | ✅ 已修复 | `core/models.py` |
+| Pydantic v2 兼容性 | 🔴 严重 | ✅ 已修复 | `api/schemas/job_submit.py` |
 | 循环导入风险 | 🟡 中等 | ✅ 已优化 | `api/services/job_service.py` |
 | 代码可读性 | 🟢 轻微 | 📝 建议 | 多个文件 |
 
