@@ -14,6 +14,7 @@ from core.config import get_settings
 from core.database import async_db
 from core.utils.logger import setup_logger
 from .routers import jobs_router
+from .middleware import RequestIDMiddleware
 
 
 @asynccontextmanager
@@ -54,7 +55,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
+# Add middlewares (order matters: last added = first executed)
+# 1. Request ID tracking (innermost)
+app.add_middleware(RequestIDMiddleware)
+
+# 2. CORS (outermost)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production

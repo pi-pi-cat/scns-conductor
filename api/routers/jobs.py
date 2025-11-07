@@ -15,6 +15,7 @@ from ..schemas import (
     JobCancelResponse,
 )
 from ..services import JobService
+from ..decorators import handle_api_errors
 
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.post(
     "/submit", response_model=JobSubmitResponse, status_code=status.HTTP_201_CREATED
 )
+@handle_api_errors
 async def submit_job(
     request: JobSubmitRequest, db: AsyncSession = Depends(get_db)
 ) -> JobSubmitResponse:
@@ -39,24 +41,13 @@ async def submit_job(
     Returns:
         作业 ID
     """
-    try:
-        job_id = await JobService.submit_job(request, db)
-        logger.info(f"Job {job_id} submitted successfully")
-        return JobSubmitResponse(job_id=str(job_id))
-
-    except ValueError as e:
-        logger.error(f"Validation error during job submission: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    except Exception as e:
-        logger.error(f"Failed to submit job: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit job",
-        )
+    job_id = await JobService.submit_job(request, db)
+    logger.info(f"Job {job_id} submitted successfully")
+    return JobSubmitResponse(job_id=str(job_id))
 
 
 @router.get("/query/{job_id}", response_model=JobQueryResponse)
+@handle_api_errors
 async def query_job(
     job_id: int, db: AsyncSession = Depends(get_db)
 ) -> JobQueryResponse:
@@ -78,25 +69,11 @@ async def query_job(
     Raises:
         404: 作业未找到
     """
-    try:
-        response = await JobService.query_job(job_id, db)
-        return response
-
-    except JobNotFoundException as e:
-        logger.warning(f"Job not found: {job_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to query job {job_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to query job",
-        )
+    return await JobService.query_job(job_id, db)
 
 
 @router.post("/cancel/{job_id}", response_model=JobCancelResponse)
+@handle_api_errors
 async def cancel_job(
     job_id: int, db: AsyncSession = Depends(get_db)
 ) -> JobCancelResponse:
@@ -116,24 +93,6 @@ async def cancel_job(
     Raises:
         404: 作业未找到
     """
-    try:
-        await JobService.cancel_job(job_id, db)
-        logger.info(f"Job {job_id} cancelled successfully")
-        return JobCancelResponse(msg="取消成功")
-
-    except JobNotFoundException as e:
-        logger.warning(f"Job not found: {job_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found"
-        )
-
-    except JobStateException as e:
-        logger.warning(f"Invalid job state transition: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    except Exception as e:
-        logger.error(f"Failed to cancel job {job_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to cancel job",
-        )
+    await JobService.cancel_job(job_id, db)
+    logger.info(f"Job {job_id} cancelled successfully")
+    return JobCancelResponse(msg="取消成功")
