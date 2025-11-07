@@ -1,5 +1,5 @@
 """
-FastAPI application main entry point
+FastAPI 主入口
 """
 
 from contextlib import asynccontextmanager
@@ -20,61 +20,60 @@ from .middleware import RequestIDMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
-    Application lifespan manager
-    Handles startup and shutdown events
+    应用生命周期管理器（启动与关闭事件）
     """
-    # Startup
+    # 启动阶段
     settings = get_settings()
 
-    # Setup logging
+    # 初始化日志
     setup_logger(settings.LOG_LEVEL, settings.LOG_FILE)
-    logger.info("Starting SCNS-Conductor API service")
+    logger.info("启动 SCNS-Conductor API 服务")
 
-    # Ensure required directories exist
+    # 确保所需目录存在
     settings.ensure_directories()
 
-    # Initialize database
+    # 初始化数据库
     async_db.init()
-    logger.info("Database initialized")
+    logger.info("数据库已初始化")
 
-    logger.info(f"API service started on {settings.API_HOST}:{settings.API_PORT}")
+    logger.info(f"API 服务已启动，监听 {settings.API_HOST}:{settings.API_PORT}")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down SCNS-Conductor API service")
+    # 关闭阶段
+    logger.info("正在关闭 SCNS-Conductor API 服务")
     await async_db.close()
-    logger.info("API service stopped")
+    logger.info("API 服务已停止")
 
 
-# Create FastAPI application
+# 创建 FastAPI 应用
 app = FastAPI(
     title="SCNS-Conductor",
-    description="Job Scheduling and Management System - REST API",
+    description="作业调度与管理系统 - REST API",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Add middlewares (order matters: last added = first executed)
-# 1. Request ID tracking (innermost)
+# 添加中间件（顺序重要：最后添加的最先执行）
+# 1. 请求 ID 追踪（最内层）
 app.add_middleware(RequestIDMiddleware)
 
-# 2. CORS (outermost)
+# 2. 跨域请求 CORS（最外层）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],  # 生产环境需合理配置
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
+# 注册路由
 app.include_router(jobs_router)
 
 
 @app.get("/", status_code=status.HTTP_200_OK)
 async def root():
-    """Root endpoint - API information"""
+    """根接口 - 返回 API 信息"""
     return {
         "service": "SCNS-Conductor API",
         "version": "1.0.0",
@@ -84,15 +83,15 @@ async def root():
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
-    """Health check endpoint"""
+    """健康检查接口"""
     try:
-        # Could add database connectivity check here
+        # 此处可添加数据库连通性检查
         return {
             "status": "healthy",
             "service": "scns-conductor-api",
         }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"健康检查失败: {e}")
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
@@ -102,15 +101,15 @@ async def health_check():
         )
 
 
-# Exception handlers
+# 全局异常处理器
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Global exception handler"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    """全局异常处理"""
+    logger.error(f"未处理的异常: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
-            "detail": "Internal server error",
+            "detail": "服务器内部错误",
         },
     )
 

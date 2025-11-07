@@ -1,6 +1,7 @@
 """
-Schemas for job submission
+作业提交相关数据模型
 """
+
 from typing import Dict
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,157 +11,120 @@ from core.utils.time_utils import parse_time_limit
 
 class JobEnvironment(BaseModel):
     """
-    Job environment variables
-    Accepts any key-value pairs as environment variables
+    作业环境变量
+    支持任意键值对作为环境变量
     """
+
     __root__: Dict[str, str] = Field(default_factory=dict)
-    
+
     def dict(self, **kwargs):
-        """Override dict to return the root dictionary"""
+        """重载dict方法，直接返回根字典"""
         return self.__root__
-    
+
     def __iter__(self):
         return iter(self.__root__)
-    
+
     def __getitem__(self, item):
         return self.__root__[item]
 
 
 class JobSpec(BaseModel):
-    """Job specification"""
-    
+    """作业规格"""
+
     account: str = Field(
-        ...,
-        description="Account or project name for the job",
-        min_length=1,
-        max_length=255
+        ..., description="作业所属账号或项目名称", min_length=1, max_length=255
     )
-    
+
     environment: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Environment variables for the job"
+        default_factory=dict, description="作业环境变量"
     )
-    
+
     current_working_directory: str = Field(
         ...,
         alias="current_working_directory",
-        description="Working directory for job execution",
+        description="作业执行的工作目录",
         min_length=1,
-        max_length=1024
+        max_length=1024,
     )
-    
+
     standard_output: str = Field(
         ...,
         alias="standard_output",
-        description="Standard output file path (relative to working directory)",
+        description="标准输出文件路径（相对工作目录）",
         min_length=1,
-        max_length=512
+        max_length=512,
     )
-    
+
     standard_error: str = Field(
         ...,
         alias="standard_error",
-        description="Standard error file path (relative to working directory)",
+        description="标准错误输出文件路径（相对工作目录）",
         min_length=1,
-        max_length=512
+        max_length=512,
     )
-    
-    ntasks_per_node: int = Field(
-        default=1,
-        ge=1,
-        description="Number of tasks per node"
-    )
-    
-    cpus_per_task: int = Field(
-        default=1,
-        ge=1,
-        description="Number of CPU cores per task"
-    )
-    
+
+    ntasks_per_node: int = Field(default=1, ge=1, description="每个节点分配的任务数")
+
+    cpus_per_task: int = Field(default=1, ge=1, description="每个任务分配的CPU核数")
+
     memory_per_node: str = Field(
-        default="1G",
-        description="Memory per node (e.g., '16G', '1024M')"
+        default="1G", description="每节点分配的内存（例如：'16G', '1024M'）"
     )
-    
-    name: str = Field(
-        ...,
-        description="Job name",
-        min_length=1,
-        max_length=255
-    )
-    
-    time_limit: str = Field(
-        ...,
-        description="Time limit in minutes (e.g., '30', '120')"
-    )
-    
-    partition: str = Field(
-        ...,
-        description="Partition name",
-        min_length=1,
-        max_length=100
-    )
-    
-    exclusive: bool = Field(
-        default=False,
-        description="Whether to request exclusive node access"
-    )
-    
+
+    name: str = Field(..., description="作业名称", min_length=1, max_length=255)
+
+    time_limit: str = Field(..., description="作业运行时限（分钟），如'30'或'120'")
+
+    partition: str = Field(..., description="分区名称", min_length=1, max_length=100)
+
+    exclusive: bool = Field(default=False, description="是否请求节点独占")
+
     @field_validator("memory_per_node")
     @classmethod
     def validate_memory(cls, v: str) -> str:
-        """Validate memory format"""
+        """校验内存格式"""
         validate_memory_format(v)
         return v
-    
+
     @field_validator("time_limit")
     @classmethod
     def validate_time_limit(cls, v: str) -> str:
-        """Validate time limit format"""
-        # Parse to ensure it's valid, but keep original string
+        """校验作业时限格式"""
+        # 解析时限以确保有效，但保持原字符串
         parse_time_limit(v)
         return v
-    
+
     def get_time_limit_minutes(self) -> int:
-        """Get time limit in minutes"""
+        """获取时限（分钟）"""
         return parse_time_limit(self.time_limit)
-    
+
     def get_total_cpus(self) -> int:
-        """Calculate total CPU cores required"""
+        """计算所需CPU总数"""
         return self.ntasks_per_node * self.cpus_per_task
-    
+
     class Config:
         populate_by_name = True
 
 
 class JobSubmitRequest(BaseModel):
-    """Job submission request"""
-    
-    job: JobSpec = Field(..., description="Job specification")
-    script: str = Field(
-        ...,
-        description="Job script content",
-        min_length=1
-    )
-    
+    """作业提交请求"""
+
+    job: JobSpec = Field(..., description="作业规格")
+    script: str = Field(..., description="作业脚本内容", min_length=1)
+
     @field_validator("script")
     @classmethod
     def validate_script(cls, v: str) -> str:
-        """Validate script content"""
+        """校验脚本内容非空"""
         if not v.strip():
-            raise ValueError("Script cannot be empty or whitespace only")
+            raise ValueError("脚本内容不能为空或仅包含空白字符")
         return v
 
 
 class JobSubmitResponse(BaseModel):
-    """Job submission response"""
-    
-    job_id: str = Field(..., description="Unique job ID")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "job_id": "1001"
-            }
-        }
+    """作业提交响应"""
 
+    job_id: str = Field(..., description="作业唯一ID")
+
+    class Config:
+        json_schema_extra = {"example": {"job_id": "1001"}}
