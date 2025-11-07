@@ -1,12 +1,12 @@
-# Worker Service Dockerfile
-# Optimized for ARM/aarch64 (Kunpeng) architecture
+# Worker 服务 Dockerfile
+# 针对 ARM/aarch64（鲲鹏）架构优化
 
 FROM python:3.10-slim
 
-# Set working directory
+# 设置工作目录
 WORKDIR /app
 
-# Install system dependencies including bash for script execution
+# 安装系统依赖，包括用于脚本执行的 bash
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     postgresql-client \
@@ -14,20 +14,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better layer caching
+# 优先复制 requirements.txt 以优化缓存
 COPY requirements.txt .
 
-# Install Python dependencies
+# 安装 Python 依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# 复制应用代码
 COPY core/ ./core/
 COPY worker/ ./worker/
 COPY app.properties .
 
-# Create necessary directories
+# 创建必要的目录
 RUN mkdir -p /var/log/scns-conductor /var/scns-conductor/jobs /var/scns-conductor/scripts
 
-# Run worker
+# 启动 worker 服务
 CMD ["python", "-m", "worker.main"]
 
