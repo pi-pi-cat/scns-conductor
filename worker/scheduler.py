@@ -28,7 +28,7 @@ class ResourceScheduler:
         """
         基于可用资源调度待处理作业
 
-        Returns:
+        返回值:
             已调度作业的ID列表
         """
         scheduled_jobs = []
@@ -45,25 +45,25 @@ class ResourceScheduler:
             if not pending_jobs:
                 return scheduled_jobs
 
-            logger.debug(f"Found {len(pending_jobs)} pending jobs")
+            logger.debug(f"发现 {len(pending_jobs)} 个待处理作业")
 
             # 尝试调度每个作业
             for job in pending_jobs:
                 required_cpus = job.total_cpus_required
 
-                # 检查资源是否可用（First Fit）
+                # 检查资源是否可分配（First Fit）
                 if self.resource_tracker.can_allocate(required_cpus):
                     # 分配资源
                     if self._allocate_resources(session, job, required_cpus):
                         scheduled_jobs.append(job.id)
                         logger.info(
-                            f"Scheduled job {job.id} ({job.name}): cpus={required_cpus}"
+                            f"已调度作业 {job.id} ({job.name}): cpus={required_cpus}"
                         )
                 else:
                     logger.debug(
-                        f"Insufficient resources for job {job.id}: "
-                        f"required={required_cpus}, "
-                        f"available={self.resource_tracker.available_cpus}"
+                        f"作业 {job.id} 资源不足: "
+                        f"需要={required_cpus}, "
+                        f"可用={self.resource_tracker.available_cpus}"
                     )
 
             # 提交所有变更
@@ -72,23 +72,23 @@ class ResourceScheduler:
         if scheduled_jobs:
             stats = self.resource_tracker.get_stats()
             logger.info(
-                f"Scheduled {len(scheduled_jobs)} jobs. "
-                f"Resource utilization: {stats['utilization']:.1f}%"
+                f"共调度 {len(scheduled_jobs)} 个作业，"
+                f"资源利用率: {stats['utilization']:.1f}%"
             )
 
         return scheduled_jobs
 
     def _allocate_resources(self, session: Session, job: Job, cpus: int) -> bool:
         """
-        Allocate resources to a job
+        给指定作业分配资源
 
-        Args:
-            session: Database session
-            job: Job to allocate resources to
-            cpus: Number of CPUs to allocate
+        参数:
+            session: 数据库会话
+            job: 目标作业
+            cpus: 待分配的CPU数量
 
-        Returns:
-            True if allocation succeeded
+        返回:
+            分配成功返回True，否则返回False
         """
         try:
             # 更新资源跟踪器
@@ -113,17 +113,17 @@ class ResourceScheduler:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to allocate resources for job {job.id}: {e}")
+            logger.error(f"为作业 {job.id} 分配资源失败: {e}")
             # 回滚资源跟踪器
             self.resource_tracker.release(cpus)
             return False
 
     def release_resources(self, job_id: int) -> None:
         """
-        Release resources for a completed job
+        释放已完成作业占用的资源
 
-        Args:
-            job_id: Job ID
+        参数:
+            job_id: 作业ID
         """
         with sync_db.get_session() as session:
             # 查找资源分配记录
@@ -147,12 +147,11 @@ class ResourceScheduler:
                 session.commit()
 
                 logger.info(
-                    f"Released resources for job {job_id}: "
-                    f"cpus={allocation.allocated_cpus}"
+                    f"已释放作业 {job_id} 的资源: cpus={allocation.allocated_cpus}"
                 )
             else:
-                logger.warning(f"No active allocation found for job {job_id}")
+                logger.warning(f"未找到作业 {job_id} 的活跃分配记录")
 
     def get_resource_stats(self) -> dict:
-        """Get current resource statistics"""
+        """获取当前资源统计信息"""
         return self.resource_tracker.get_stats()

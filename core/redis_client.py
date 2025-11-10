@@ -36,13 +36,13 @@ class RedisManager:
         settings = get_settings()
 
         # 创建Redis连接池
+        # 注意：不使用 decode_responses=True，因为 RQ 需要处理二进制序列化数据（pickle）
         self._pool = ConnectionPool(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             db=settings.REDIS_DB,
             password=settings.REDIS_PASSWORD,
             max_connections=50,
-            decode_responses=True,  # 自动解码响应为字符串
         )
 
         # 创建Redis客户端
