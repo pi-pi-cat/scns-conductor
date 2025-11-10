@@ -90,8 +90,9 @@ class JobService:
         try:
             queue = redis_manager.get_queue()
             rq_job = queue.enqueue(
-                "worker.executor.execute_job_task",
+                "worker.core.executor.execute_job_task",
                 job_id,
+                job_id=f"job_{job_id}",  # 使用固定的 job_id 防止重复入队
                 job_timeout=3600 * 24,  # 24小时超时
             )
             logger.info(f"作业 {job_id} 已入队至RQ: {rq_job.id}")
