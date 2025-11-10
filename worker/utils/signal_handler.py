@@ -1,6 +1,8 @@
 """
 信号处理器
+提供优雅的信号处理功能
 """
+
 import signal
 from typing import Callable, List, Optional
 from loguru import logger
@@ -20,17 +22,18 @@ class SignalHandler:
         handler.register()  # 注册信号处理
         
         # 链式调用
-        SignalHandler() \\
-            .on_shutdown(daemon.stop) \\
-            .on_shutdown(worker.request_stop) \\
+        SignalHandler() \
+            .on_shutdown(daemon.stop) \
+            .on_shutdown(worker.request_stop) \
             .register()
     """
     
-    def __init__(self):
-        self._shutdown_callbacks: List[Callable] = []
-        self._original_handlers = {}
+    def __init__(self) -> None:
+        """初始化信号处理器"""
+        self._shutdown_callbacks: List[Callable[[], None]] = []
+        self._original_handlers: dict[int, Optional[signal.Handlers]] = {}
     
-    def on_shutdown(self, callback: Callable) -> "SignalHandler":
+    def on_shutdown(self, callback: Callable[[], None]) -> "SignalHandler":
         """
         添加关闭回调
         
@@ -53,7 +56,7 @@ class SignalHandler:
         if signals is None:
             signals = [signal.SIGTERM, signal.SIGINT]
         
-        def handler(signum, frame):
+        def handler(signum: int, frame) -> None:
             sig_name = signal.Signals(signum).name
             logger.info(f"🛑 Received {sig_name}, initiating graceful shutdown...")
             
@@ -72,6 +75,7 @@ class SignalHandler:
     def restore(self) -> None:
         """恢复原始信号处理器"""
         for sig, original_handler in self._original_handlers.items():
-            signal.signal(sig, original_handler)
+            if original_handler is not None:
+                signal.signal(sig, original_handler)
         self._original_handlers.clear()
 

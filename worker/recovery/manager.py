@@ -1,21 +1,18 @@
 """
-Worker 故障恢复模块（策略模式版）
+Worker 故障恢复管理器（策略模式版）
 处理 Worker 异常退出后的状态恢复和孤儿作业清理
 """
-import os
-import signal
+
 import time
-from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from loguru import logger
-from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.database import sync_db
-from core.models import Job, ResourceAllocation
+from core.models import Job
 from core.enums import JobState
-from .recovery_strategies import (
+from worker.recovery.strategies import (
     RecoveryStrategy,
     RecoveryResult,
     OrphanJobRecoveryStrategy,
@@ -46,7 +43,7 @@ class RecoveryManager:
         result = manager.recover_on_startup()
     """
     
-    def __init__(self, strategy: Optional[RecoveryStrategy] = None):
+    def __init__(self, strategy: Optional[RecoveryStrategy] = None) -> None:
         """
         初始化恢复管理器
         
@@ -57,8 +54,8 @@ class RecoveryManager:
         # 默认使用组合策略
         self.strategy = strategy or CompositeRecoveryStrategy([
             OrphanJobRecoveryStrategy(),
-            TimeoutJobRecoveryStrategy(max_runtime_hours=72),
-            StaleAllocationCleanupStrategy(max_age_hours=48),
+            TimeoutJobRecoveryStrategy(),
+            StaleAllocationCleanupStrategy(),
         ])
     
     def recover_on_startup(self) -> RecoveryResult:
@@ -79,9 +76,14 @@ class RecoveryManager:
         logger.info("=" * 60)
         
         with sync_db.get_session() as session:
-            # 查找所有可能需要恢复的作业（RUNNING、PENDING等）
+            # 查找所有可能需要恢复的作业（RUNNING、COMPLETED、FAILED、CANCELLED）
             jobs = session.query(Job).filter(
-                Job.state.in_([JobState.RUNNING, JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED])
+                Job.state.in_([
+                    JobState.RUNNING,
+                    JobState.COMPLETED,
+                    JobState.FAILED,
+                    JobState.CANCELLED
+                ])
             ).all()
             
             if not jobs:
