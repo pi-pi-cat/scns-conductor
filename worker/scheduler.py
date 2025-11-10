@@ -45,7 +45,7 @@ class ResourceScheduler:
             if not pending_jobs:
                 return scheduled_jobs
 
-            logger.debug(f"发现 {len(pending_jobs)} 个待处理作业")
+            logger.info(f"🔍 发现 {len(pending_jobs)} 个待处理作业，开始调度...")
 
             # 尝试调度每个作业
             for job in pending_jobs:
@@ -60,10 +60,10 @@ class ResourceScheduler:
                             f"已调度作业 {job.id} ({job.name}): cpus={required_cpus}"
                         )
                 else:
-                    logger.debug(
-                        f"作业 {job.id} 资源不足: "
-                        f"需要={required_cpus}, "
-                        f"可用={self.resource_tracker.available_cpus}"
+                    logger.info(
+                        f"⏳ 作业 {job.id} ({job.name}) 资源不足: "
+                        f"需要={required_cpus} CPUs, "
+                        f"可用={self.resource_tracker.available_cpus} CPUs"
                     )
 
             # 提交所有变更
