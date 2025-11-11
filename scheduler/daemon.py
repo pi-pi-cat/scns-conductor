@@ -43,7 +43,7 @@ class SchedulerDaemon(threading.Thread):
         while not self._stop_event.is_set():
             try:
                 current_time = int(time.time())
-                
+
                 # 1. 调度作业
                 self.scheduler.schedule()
 
@@ -76,6 +76,7 @@ class SchedulerDaemon(threading.Thread):
         """输出统计信息"""
         stats = self.scheduler.get_stats()
         logger.info(
-            f"📊 Resources: {stats['used_cpus']}/{stats['total_cpus']} CPUs "
+            f"📊 Resources: {stats['allocated_cpus']}/{stats['total_cpus']} CPUs "
             f"({stats['utilization']:.1f}% utilization)"
+            f"Active workers: {stats['active_workers']}"
         )
