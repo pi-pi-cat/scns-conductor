@@ -15,6 +15,7 @@ from core.config import get_settings
 from core.database import sync_db
 from core.models import Job, ResourceAllocation
 from core.enums import JobState
+from core.redis_client import redis_manager
 
 from worker.process_utils import store_pid, kill_process_tree
 
@@ -170,7 +171,7 @@ class JobExecutor:
 
     def _release_resources(self, job_id: int):
         """
-        释放资源（直接更新数据库）
+        释放资源（更新数据库 + Redis 缓存）
 
         Args:
             job_id: 作业 ID
@@ -187,14 +188,21 @@ class JobExecutor:
             )
 
             if allocation:
-                # 标记为已释放
+                cpus = allocation.allocated_cpus
+
+                # 1. 标记为已释放
                 allocation.released = True
                 allocation.released_time = datetime.utcnow()
                 session.commit()
 
-                logger.info(
-                    f"♻️  Released {allocation.allocated_cpus} CPUs for job {job_id}"
-                )
+                # 2. 更新 Redis 缓存（减少已分配资源）
+                try:
+                    redis = redis_manager.get_connection()
+                    redis.decrby("resource:allocated_cpus", cpus)
+                except Exception as e:
+                    logger.warning(f"Failed to update Redis cache: {e}")
+
+                logger.info(f"♻️  Released {cpus} CPUs for job {job_id}")
             else:
                 logger.warning(f"⚠️  No unreleased allocation found for job {job_id}")
 

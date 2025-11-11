@@ -8,18 +8,39 @@ import time
 
 from loguru import logger
 
+from core.database import sync_db
+from core.models import ResourceAllocation
+
 
 def store_pid(job_id: int, pid: int):
     """
-    存储进程 ID（可选实现）
+    存储进程 ID 到数据库
     
     Args:
         job_id: 作业 ID
         pid: 进程 ID
     """
-    # 可以将 PID 存储到文件或数据库
-    # 这里简化处理，只记录日志
-    logger.debug(f"Job {job_id} PID: {pid}")
+    try:
+        with sync_db.get_session() as session:
+            # 查找该作业的资源分配记录
+            allocation = (
+                session.query(ResourceAllocation)
+                .filter(
+                    ResourceAllocation.job_id == job_id,
+                    ~ResourceAllocation.released,
+                )
+                .first()
+            )
+            
+            if allocation:
+                allocation.process_id = pid
+                session.commit()
+                logger.debug(f"Job {job_id} PID {pid} stored in database")
+            else:
+                logger.warning(f"No allocation found for job {job_id}, PID not stored")
+    
+    except Exception as e:
+        logger.error(f"Failed to store PID for job {job_id}: {e}")
 
 
 def kill_process_tree(pid: int, timeout: int = 5):

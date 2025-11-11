@@ -18,19 +18,23 @@ class SchedulerDaemon(threading.Thread):
         scheduler,
         check_interval: float = 5.0,
         stats_interval: int = 60,
+        sync_interval: int = 300,  # 5 分钟
     ):
         """
         Args:
             scheduler: JobScheduler 实例
             check_interval: 调度检查间隔（秒）
             stats_interval: 统计输出间隔（秒）
+            sync_interval: 缓存同步间隔（秒）
         """
         super().__init__(daemon=True, name="SchedulerDaemon")
         self.scheduler = scheduler
         self.check_interval = check_interval
         self.stats_interval = stats_interval
+        self.sync_interval = sync_interval
         self._stop_event = threading.Event()
         self._last_stats_time = 0
+        self._last_sync_time = 0
 
     def run(self):
         """主循环"""
@@ -38,14 +42,20 @@ class SchedulerDaemon(threading.Thread):
 
         while not self._stop_event.is_set():
             try:
-                # 调度作业
+                current_time = int(time.time())
+                
+                # 1. 调度作业
                 self.scheduler.schedule()
 
-                # 释放已完成作业的资源（兜底）
+                # 2. 释放已完成作业的资源（兜底）
                 self.scheduler.release_completed()
 
-                # 定期输出统计
-                current_time = int(time.time())
+                # 3. 定期同步 Redis 缓存（容错）
+                if current_time - self._last_sync_time >= self.sync_interval:
+                    self.scheduler.sync_resource_cache()
+                    self._last_sync_time = current_time
+
+                # 4. 定期输出统计
                 if current_time - self._last_stats_time >= self.stats_interval:
                     self._log_stats()
                     self._last_stats_time = current_time

@@ -17,6 +17,7 @@ from core.config import get_settings
 from core.database import sync_db
 from core.redis_client import redis_manager
 from core.utils.logger import setup_logger
+from worker.registry import WorkerRegistry
 
 
 def main():
@@ -49,12 +50,26 @@ def main():
     # 获取队列
     queue = redis_manager.get_queue()
 
+    # 初始化 Worker 注册器
+    registry = WorkerRegistry()
+
+    # 注册 Worker（向 Scheduler 宣告资源）
+    if not registry.register():
+        logger.error("✗ Worker registration failed")
+        sys.exit(1)
+
+    # 启动心跳线程
+    if not registry.start_heartbeat():
+        logger.error("✗ Failed to start heartbeat")
+        sys.exit(1)
+
     logger.info("-" * 70)
     logger.info(f"Node: {settings.NODE_NAME}")
+    logger.info(f"CPUs: {settings.TOTAL_CPUS}")
     logger.info(f"Queue: {queue.name}")
     logger.info("-" * 70)
 
-    # 清理过期的 worker（解决重启时名称冲突）
+    # 清理过期的 RQ worker（解决重启时名称冲突）
     worker_name = f"worker-{settings.NODE_NAME}"
     connection = redis_manager.get_connection()
 
@@ -100,8 +115,14 @@ def main():
     except Exception as e:
         logger.error(f"❌ Worker error: {e}", exc_info=True)
     finally:
+        # 注销 Worker（通知 Scheduler 资源已不可用）
+        logger.info("Shutting down worker...")
+        registry.unregister()
+
+        # 关闭连接
         sync_db.close()
         redis_manager.close()
+
         logger.info("=" * 70)
         logger.info("✅ Worker stopped")
         logger.info("=" * 70)
