@@ -1,78 +1,70 @@
-.PHONY: help install dev-install clean test lint format docker-build docker-up docker-down init-db health
+# SCNS-Conductor Makefile
 
-# Default target
-help:
-	@echo "SCNS-Conductor - Job Scheduling System"
+.PHONY: help dev prod stop clean
+
+help:  ## 显示帮助信息
+	@echo "SCNS-Conductor v2.0 - 可用命令:"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  install       - Install production dependencies"
-	@echo "  dev-install   - Install development dependencies"
-	@echo "  clean         - Clean up generated files"
-	@echo "  test          - Run tests"
-	@echo "  lint          - Run linters"
-	@echo "  format        - Format code"
-	@echo "  docker-build  - Build Docker images"
-	@echo "  docker-up     - Start Docker services"
-	@echo "  docker-down   - Stop Docker services"
-	@echo "  init-db       - Initialize database"
-	@echo "  health        - Run health check"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@echo ""
 
-install:
-	pip install -r requirements.txt
+# 开发环境
+dev-infra:  ## 启动基础设施（Postgres + Redis）
+	docker-compose up postgres redis -d
 
-dev-install:
-	pip install -r requirements-dev.txt
+dev-scheduler:  ## 启动 Scheduler
+	python scheduler/main.py
 
-clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	find . -type f -name "*.pyo" -delete
-	find . -type f -name "*.egg-info" -exec rm -rf {} +
-	rm -rf .pytest_cache
-	rm -rf htmlcov
-	rm -rf .coverage
+dev-worker:  ## 启动 Worker
+	python worker/main.py
 
-test:
-	pytest tests/ -v --cov=core --cov=api --cov=worker
+dev-api:  ## 启动 API
+	uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
-lint:
-	flake8 core/ api/ worker/ --max-line-length=100
-	mypy core/ api/ worker/ --ignore-missing-imports
-
-format:
-	black core/ api/ worker/ scripts/ --line-length=100
-	isort core/ api/ worker/ scripts/
-
-docker-build:
-	docker-compose build
-
-docker-up:
+# 生产环境
+prod:  ## 启动所有服务（生产模式）
 	docker-compose up -d
-	@echo "Waiting for services to be healthy..."
-	@sleep 10
-	@echo "Services started. Initializing database..."
-	docker-compose exec api python scripts/init_db.py
 
-docker-down:
+prod-scale:  ## 扩展 Worker (使用: make prod-scale N=5)
+	docker-compose up -d --scale worker=$(N)
+
+# 管理
+stop:  ## 停止所有服务
 	docker-compose down
 
-init-db:
+logs:  ## 查看日志
+	docker-compose logs -f
+
+logs-scheduler:  ## 查看 Scheduler 日志
+	docker-compose logs -f scheduler
+
+logs-worker:  ## 查看 Worker 日志
+	docker-compose logs -f worker
+
+logs-api:  ## 查看 API 日志
+	docker-compose logs -f api
+
+# 清理
+clean:  ## 清理所有容器和卷
+	docker-compose down -v
+
+# 数据库
+db-init:  ## 初始化数据库
 	python scripts/init_db.py
 
-health:
-	python scripts/health_check.py
-
-# Development shortcuts
-run-api:
-	python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
-
-run-worker:
-	python -m worker.main
-
-# Database migrations
-migrate:
+db-migrate:  ## 运行数据库迁移
 	alembic upgrade head
 
-migrate-create:
-	alembic revision --autogenerate -m "$(msg)"
+# 开发
+format:  ## 格式化代码
+	black .
 
+lint:  ## 检查代码
+	flake8 .
+	mypy .
+
+test:  ## 运行测试
+	pytest tests/
+
+# 默认命令
+.DEFAULT_GOAL := help

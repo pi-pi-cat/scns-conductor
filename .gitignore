@@ -16,14 +16,19 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual Environment
 venv/
-ENV/
 env/
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -31,34 +36,40 @@ env/
 *.swp
 *.swo
 *~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
+.DS_Store
 
 # Logs
 *.log
 logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # Environment
 .env
 .env.local
-app.properties.local
+.env.*.local
 
-# Database
-*.db
-*.sqlite3
+# Data
+data/
+*.pid
 
-# Docker
-*.log
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
-# OS
-.DS_Store
-Thumbs.db
+# Jupyter
+.ipynb_checkpoints
 
-# Project Specific
-/var/
-/jobs/
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
+# Alembic
+alembic/versions/__pycache__/

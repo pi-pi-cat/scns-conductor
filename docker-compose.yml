@@ -65,13 +65,53 @@ services:
     networks:
       - scns-network
     restart: unless-stopped
+    deploy:
+      replicas: 1  # API 可以水平扩展
 
-  # Worker Service
+  # Scheduler Service (独立调度服务 - 单例)
+  scheduler:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: scns-scheduler
+    command: python scheduler/main.py
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: scns_conductor
+      POSTGRES_USER: scnsqap
+      POSTGRES_PASSWORD: scns_password_2024
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      NODE_NAME: scheduler-node
+      TOTAL_CPUS: 8  # 节点总 CPU 数
+      DEFAULT_PARTITION: default
+      LOG_LEVEL: INFO
+      LOG_FILE: /var/log/scns-conductor/scheduler.log
+      JOB_WORK_BASE_DIR: /var/scns-conductor/jobs
+      SCRIPT_DIR: /var/scns-conductor/scripts
+    volumes:
+      - job_data:/var/scns-conductor/jobs
+      - scheduler_logs:/var/log/scns-conductor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - scns-network
+    restart: unless-stopped
+    deploy:
+      replicas: 1  # 调度器必须保持单例
+
+  # Worker Service (纯执行)
   worker:
     build:
       context: .
       dockerfile: worker/Dockerfile
-    container_name: scns-worker
+    container_name: scns-worker-1
+    command: python worker/main.py
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -82,7 +122,7 @@ services:
       REDIS_PORT: 6379
       REDIS_DB: 0
       NODE_NAME: worker-node-01
-      TOTAL_CPUS: 8
+      TOTAL_CPUS: 8  # 仅用于资源管理器初始化
       DEFAULT_PARTITION: default
       LOG_LEVEL: INFO
       LOG_FILE: /var/log/scns-conductor/worker.log
@@ -96,9 +136,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      scheduler:
+        condition: service_started
     networks:
       - scns-network
     restart: unless-stopped
+    deploy:
+      replicas: 1  # Worker 可以水平扩展
 
 volumes:
   postgres_data:
@@ -106,6 +150,8 @@ volumes:
   job_data:
     driver: local
   api_logs:
+    driver: local
+  scheduler_logs:
     driver: local
   worker_logs:
     driver: local

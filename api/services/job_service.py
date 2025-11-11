@@ -17,7 +17,6 @@ from loguru import logger
 from core.models import Job
 from core.enums import JobState, DataSource
 from core.exceptions import JobNotFoundException
-from core.redis_client import redis_manager
 from core.utils.time_utils import (
     format_elapsed_time,
     format_limit_time,
@@ -44,9 +43,9 @@ class JobService:
             作业ID
 
         说明:
-            1. 创建作业记录（短事务，立即释放连接）
-            2. 执行队列操作（不占用数据库连接）
-            3. 如需更新状态，再次获取连接（短事务）
+            1. 创建作业记录为 PENDING 状态
+            2. 等待独立的调度服务（scheduler_service）进行调度
+            3. 调度服务会在资源可用时将作业状态改为 RUNNING 并加入执行队列
         """
         job_spec = request.job
         script = request.script
@@ -60,7 +59,7 @@ class JobService:
             "account": job_spec.account,
             "name": job_spec.name,
             "partition": job_spec.partition,
-            "state": JobState.PENDING,
+            "state": JobState.PENDING,  # 创建为 PENDING，等待调度
             "allocated_cpus": total_cpus,
             "allocated_nodes": 1,
             "ntasks_per_node": job_spec.ntasks_per_node,
@@ -77,35 +76,15 @@ class JobService:
             "exit_code": "",
         }
 
-        # ✅ 短事务1：创建作业记录（会话自动管理，用完即释放）
+        # 创建作业记录（短事务）
         job = await JobRepository.create_job(job_data)
         job_id = job.id
 
         logger.info(
-            f"作业已提交: id={job_id}, name={job_spec.name}, "
-            f"cpus={total_cpus}, account={job_spec.account}"
+            f"✅ 作业已提交: id={job_id}, name={job_spec.name}, "
+            f"cpus={total_cpus}, account={job_spec.account}, "
+            f"状态=PENDING (等待调度服务处理)"
         )
-
-        # ⚡ 队列操作（不占用数据库连接）
-        try:
-            queue = redis_manager.get_queue()
-            rq_job = queue.enqueue(
-                "worker.core.executor.execute_job_task",
-                job_id,
-                job_id=f"job_{job_id}",  # 使用固定的 job_id 防止重复入队
-                job_timeout=3600 * 24,  # 24小时超时
-            )
-            logger.info(f"作业 {job_id} 已入队至RQ: {rq_job.id}")
-        except Exception as e:
-            logger.error(f"作业 {job_id} 入队失败: {e}")
-
-            # ✅ 短事务2：更新失败状态（独立的短连接）
-            await JobRepository.update_job_state(
-                job_id=job_id,
-                new_state=JobState.FAILED,
-                error_msg=f"作业入队失败: {e}",
-            )
-            raise
 
         return job_id
 
