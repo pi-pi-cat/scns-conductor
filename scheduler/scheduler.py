@@ -2,67 +2,69 @@
 Job Scheduler - 作业调度器
 
 算法：FIFO + First Fit
-资源管理：
-- 动态资源：从 Redis 获取活跃 Worker 的总资源
-- 资源缓存：使用 Redis 缓存已分配资源，提升性能
-- 数据库持久化：保证一致性和故障恢复
+资源管理：使用 ResourceManager 统一管理资源
+
+重构说明：
+- 使用 ResourceManager 替代重复的资源查询逻辑
+- 遵循 DRY 原则，避免代码重复
+- 使用服务层提供的统一接口
 """
 
 from datetime import datetime
 from loguru import logger
-from sqlalchemy import func
 
 from core.config import get_settings
 from core.database import sync_db
 from core.models import Job, ResourceAllocation
 from core.enums import JobState
 from core.redis_client import redis_manager
+from core.services import ResourceManager
 
 
 class JobScheduler:
     """
-    作业调度器 v3.0 - 动态资源管理
+    作业调度器 v4.0 - 使用服务层架构
 
-    核心改进：
-    1. 动态资源感知：从活跃 Worker 获取总资源，支持动态扩缩容
-    2. Redis 缓存：缓存已分配资源，避免频繁数据库查询
-    3. 数据库持久化：保证数据一致性
-    4. 定期同步：从数据库同步到 Redis（容错机制）
+    改进：
+    - 使用 ResourceManager 统一管理资源
+    - 遵循 DRY 原则
+    - 降低耦合度
     """
 
-    # Redis 键名
-    REDIS_KEY_ALLOCATED_CPUS = "resource:allocated_cpus"
-    REDIS_KEY_AVAILABLE_CPUS = "resource:available_cpus"
+    def __init__(self, resource_manager: ResourceManager = None):
+        """
+        初始化调度器
 
-    def __init__(self):
+        Args:
+            resource_manager: 资源管理器（可选，用于依赖注入）
+        """
         self.settings = get_settings()
-        # 注意：不再使用配置文件中的固定 TOTAL_CPUS
-        # 改为从 Redis 动态获取活跃 Worker 的总资源
         self.queue = redis_manager.get_queue()
 
-        # 初始化 Redis 缓存
-        self._init_resource_cache()
+        # 使用资源管理器（依赖注入）
+        self.resource_manager = resource_manager or ResourceManager()
+
+        # 初始化资源缓存
+        self.resource_manager.init_cache()
 
     def schedule(self) -> int:
         """
-        调度待处理作业（使用动态资源）
+        调度待处理作业
 
         Returns:
             已调度的作业数量
         """
         scheduled_count = 0
 
-        # 1. 获取动态总资源（从活跃 Worker）
-        total_cpus = self._get_total_cpus_dynamic()
-
+        # 1. 获取资源信息（使用 ResourceManager）
+        total_cpus = self.resource_manager.get_total_cpus()
         if total_cpus == 0:
             logger.warning("⚠️  No active workers, skipping schedule")
             return 0
 
         with sync_db.get_session() as session:
-            # 2. 获取已分配资源（优先使用 Redis 缓存）
-            allocated_cpus = self._get_allocated_cpus_cached()
-            available_cpus = total_cpus - allocated_cpus
+            # 2. 获取可用资源
+            available_cpus = self.resource_manager.get_available_cpus()
 
             # 3. 查询 PENDING 作业（按提交时间排序）
             pending_jobs = (
@@ -99,110 +101,18 @@ class JobScheduler:
             session.commit()
 
         if scheduled_count > 0:
-            utilization = self._calculate_utilization()
+            stats = self.resource_manager.get_stats()
             logger.info(
                 f"✅ Scheduled {scheduled_count} jobs, "
-                f"utilization: {utilization:.1f}% ({allocated_cpus + scheduled_count}/{total_cpus} CPUs)"
+                f"utilization: {stats['utilization']:.1f}% "
+                f"({stats['allocated_cpus']}/{stats['total_cpus']} CPUs)"
             )
 
         return scheduled_count
 
-    def _init_resource_cache(self):
-        """初始化 Redis 资源缓存（从数据库同步）"""
-        try:
-            with sync_db.get_session() as session:
-                allocated_cpus = self._get_allocated_cpus(session)
-
-            redis = redis_manager.get_connection()
-            redis.set(self.REDIS_KEY_ALLOCATED_CPUS, allocated_cpus)
-
-            logger.debug(f"Resource cache initialized: {allocated_cpus} CPUs allocated")
-
-        except Exception as e:
-            logger.warning(f"Failed to initialize resource cache: {e}")
-
-    def _get_total_cpus_dynamic(self) -> int:
-        """
-        动态获取所有活跃 Worker 的 CPU 总数
-
-        Returns:
-            CPU 总数（如果没有活跃 Worker 则返回 0）
-        """
-        try:
-            redis = redis_manager.get_connection()
-            worker_keys = redis.keys("worker:*")
-
-            if not worker_keys:
-                return 0
-
-            total_cpus = 0
-            active_workers = []
-
-            for key in worker_keys:
-                worker_info = redis.hgetall(key)
-                if worker_info:
-                    cpus = int(worker_info.get(b"cpus", 0))
-                    worker_id = worker_info.get(b"worker_id", b"unknown").decode()
-                    total_cpus += cpus
-                    active_workers.append(worker_id)
-
-            logger.debug(
-                f"Active workers: {len(active_workers)}, Total CPUs: {total_cpus}"
-            )
-            return total_cpus
-
-        except Exception as e:
-            logger.error(f"Failed to get dynamic total CPUs: {e}")
-            # 降级：使用配置文件中的值
-            return self.settings.TOTAL_CPUS
-
-    def _get_allocated_cpus_cached(self) -> int:
-        """
-        获取已分配的 CPU 数量（优先使用 Redis 缓存）
-
-        Returns:
-            已分配的 CPU 数量
-        """
-        try:
-            redis = redis_manager.get_connection()
-            allocated = redis.get(self.REDIS_KEY_ALLOCATED_CPUS)
-
-            if allocated is not None:
-                return int(allocated)
-
-            # 缓存未命中，从数据库查询
-            logger.debug("Cache miss, querying database")
-            with sync_db.get_session() as session:
-                allocated = self._get_allocated_cpus(session)
-                redis.set(self.REDIS_KEY_ALLOCATED_CPUS, allocated)
-                return allocated
-
-        except Exception as e:
-            logger.error(f"Failed to get cached allocated CPUs: {e}")
-            # 降级：直接查询数据库
-            with sync_db.get_session() as session:
-                return self._get_allocated_cpus(session)
-
-    def _get_allocated_cpus(self, session) -> int:
-        """
-        从数据库查询当前已分配的 CPU 总数
-
-        Args:
-            session: 数据库会话
-
-        Returns:
-            已分配的 CPU 数量
-        """
-        result = (
-            session.query(func.sum(ResourceAllocation.allocated_cpus))
-            .filter(~ResourceAllocation.released)
-            .scalar()
-        )
-        return result or 0
-
     def _allocate_and_enqueue(self, session, job: Job, cpus: int) -> bool:
         """
-        分配资源并将作业加入队列（包含 Redis 缓存更新）
+        分配资源并将作业加入队列
 
         Args:
             session: 数据库会话
@@ -231,12 +141,8 @@ class JobScheduler:
             # 3. 提交数据库（确保状态持久化）
             session.flush()
 
-            # 4. 更新 Redis 缓存（增加已分配资源）
-            try:
-                redis = redis_manager.get_connection()
-                redis.incrby(self.REDIS_KEY_ALLOCATED_CPUS, cpus)
-            except Exception as e:
-                logger.warning(f"Failed to update Redis cache: {e}")
+            # 4. 更新资源缓存（使用 ResourceManager）
+            self.resource_manager.allocate(cpus)
 
             # 5. 加入执行队列
             self.queue.enqueue(
@@ -256,7 +162,7 @@ class JobScheduler:
 
     def release_completed(self) -> int:
         """
-        释放已完成作业的资源（兜底机制 + Redis 缓存更新）
+        释放已完成作业的资源（兜底机制）
 
         检查所有已完成但资源未释放的作业，并释放其资源
 
@@ -293,58 +199,17 @@ class JobScheduler:
 
             if released_count > 0:
                 session.commit()
-
-                # 更新 Redis 缓存（减少已分配资源）
-                try:
-                    redis = redis_manager.get_connection()
-                    redis.decrby(self.REDIS_KEY_ALLOCATED_CPUS, total_released_cpus)
-                except Exception as e:
-                    logger.warning(f"Failed to update Redis cache: {e}")
+                # 使用 ResourceManager 更新缓存
+                self.resource_manager.release(total_released_cpus)
 
         return released_count
 
-    def _calculate_utilization(self) -> float:
-        """
-        计算当前资源利用率（使用动态资源）
-
-        Returns:
-            利用率百分比
-        """
-        total_cpus = self._get_total_cpus_dynamic()
-        if total_cpus == 0:
-            return 0.0
-
-        allocated = self._get_allocated_cpus_cached()
-        return (allocated / total_cpus) * 100.0
-
     def get_stats(self) -> dict:
-        """获取资源统计信息（使用动态资源和缓存）"""
-        total_cpus = self._get_total_cpus_dynamic()
-        allocated = self._get_allocated_cpus_cached()
-        available = total_cpus - allocated
-        utilization = self._calculate_utilization()
-
-        return {
-            "total_cpus": total_cpus,
-            "used_cpus": allocated,
-            "available_cpus": available,
-            "utilization": utilization,
-        }
+        """获取资源统计信息"""
+        return self.resource_manager.get_stats()
 
     def sync_resource_cache(self):
         """
         从数据库同步资源状态到 Redis（容错机制）
-
-        定期调用此方法，确保 Redis 缓存与数据库一致
         """
-        try:
-            with sync_db.get_session() as session:
-                allocated = self._get_allocated_cpus(session)
-
-            redis = redis_manager.get_connection()
-            redis.set(self.REDIS_KEY_ALLOCATED_CPUS, allocated)
-
-            logger.debug(f"Resource cache synced: {allocated} CPUs allocated")
-
-        except Exception as e:
-            logger.error(f"Failed to sync resource cache: {e}")
+        self.resource_manager.sync_cache_from_db()

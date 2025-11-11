@@ -15,16 +15,29 @@ from core.config import get_settings
 from core.database import sync_db
 from core.models import Job, ResourceAllocation
 from core.enums import JobState
-from core.redis_client import redis_manager
+from core.services import ResourceManager
 
 from worker.process_utils import store_pid, kill_process_tree
 
 
 class JobExecutor:
-    """作业执行器"""
+    """
+    作业执行器
 
-    def __init__(self):
+    重构说明：
+    - 使用 ResourceManager 管理资源释放
+    - 遵循 DRY 原则
+    """
+
+    def __init__(self, resource_manager: ResourceManager = None):
+        """
+        初始化执行器
+
+        Args:
+            resource_manager: 资源管理器（可选，用于依赖注入）
+        """
         self.settings = get_settings()
+        self.resource_manager = resource_manager or ResourceManager()
 
     def execute(self, job_id: int):
         """
@@ -195,12 +208,8 @@ class JobExecutor:
                 allocation.released_time = datetime.utcnow()
                 session.commit()
 
-                # 2. 更新 Redis 缓存（减少已分配资源）
-                try:
-                    redis = redis_manager.get_connection()
-                    redis.decrby("resource:allocated_cpus", cpus)
-                except Exception as e:
-                    logger.warning(f"Failed to update Redis cache: {e}")
+                # 2. 使用 ResourceManager 更新缓存
+                self.resource_manager.release(cpus)
 
                 logger.info(f"♻️  Released {cpus} CPUs for job {job_id}")
             else:
