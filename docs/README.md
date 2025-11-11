@@ -6,6 +6,7 @@
 |------|------|
 | [PROJECT_STATUS.md](PROJECT_STATUS.md) | 📊 项目状态总览 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 🏗️ 系统架构和设计原理 |
+| [RESOURCE_MANAGEMENT.md](RESOURCE_MANAGEMENT.md) | 🔐 资源管理设计（重要）|
 | [STRUCTURE.md](STRUCTURE.md) | 📁 项目目录结构详解 |
 | [MIGRATION.md](MIGRATION.md) | 🔄 v2.0 迁移指南 |
 | [API_EXAMPLES.md](API_EXAMPLES.md) | 💻 API 使用示例 |
@@ -40,8 +41,8 @@ scns-conductor/
 │   └── daemon.py
 ├── worker/            # Worker 服务
 │   ├── main.py
-│   └── executor.py
-├── shared/            # 共享代码
+│   ├── executor.py
+│   └── process_utils.py
 ├── api/               # API 服务
 └── core/              # 基础设施
 ```

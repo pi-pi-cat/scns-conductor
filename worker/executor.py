@@ -16,8 +16,7 @@ from core.database import sync_db
 from core.models import Job, ResourceAllocation
 from core.enums import JobState
 
-from shared.resource_manager import ResourceManager
-from shared.process_utils import store_pid, kill_process_tree
+from worker.process_utils import store_pid, kill_process_tree
 
 
 class JobExecutor:
@@ -25,7 +24,6 @@ class JobExecutor:
 
     def __init__(self):
         self.settings = get_settings()
-        self.resource_manager = ResourceManager()
 
     def execute(self, job_id: int):
         """
@@ -63,7 +61,17 @@ class JobExecutor:
             logger.info(f"✅ Job {job_id} finished")
 
     def _load_job(self, job_id: int) -> Job:
-        """加载作业信息"""
+        """
+        加载作业信息
+
+        注意：这是在 RQ fork 后的子进程中首次访问数据库
+        需要确保数据库连接已初始化
+        """
+        # 确保数据库已初始化（在 fork 后的子进程中）
+        if not sync_db.is_initialized():
+            logger.info("Initializing database connection in worker process")
+            sync_db.init()
+
         with sync_db.get_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if not job:
@@ -161,13 +169,18 @@ class JobExecutor:
             logger.error(f"Failed to mark job {job_id} as failed: {e}")
 
     def _release_resources(self, job_id: int):
-        """释放资源"""
+        """
+        释放资源（直接更新数据库）
+
+        Args:
+            job_id: 作业 ID
+        """
         with sync_db.get_session() as session:
             allocation = (
                 session.query(ResourceAllocation)
                 .filter(
                     ResourceAllocation.job_id == job_id,
-                    ResourceAllocation.released == False,
+                    ResourceAllocation.released,
                 )
                 .first()
             )
@@ -175,7 +188,6 @@ class JobExecutor:
             if allocation:
                 allocation.released = True
                 allocation.released_time = datetime.utcnow()
-                self.resource_manager.release(allocation.allocated_cpus)
                 session.commit()
 
                 logger.info(

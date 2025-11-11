@@ -150,6 +150,7 @@ black .
 
 - **[📚 文档中心](docs/README.md)** - 所有文档的入口
 - **[📊 项目状态](docs/PROJECT_STATUS.md)** - 项目概况和统计
+- **[🔐 资源管理](docs/RESOURCE_MANAGEMENT.md)** - 资源管理设计（重要）
 - [🏗️ 架构说明](docs/ARCHITECTURE.md) - 系统设计原理
 - [📁 项目结构](docs/STRUCTURE.md) - 目录组织详解
 - [🔄 迁移指南](docs/MIGRATION.md) - 从旧版本升级

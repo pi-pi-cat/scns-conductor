@@ -4,6 +4,7 @@ Worker Service - 主入口
 纯执行服务，从队列获取已调度的作业并执行
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -28,15 +29,12 @@ def main():
     logger.info("💪 SCNS-Conductor Worker Service v2.0")
     logger.info("=" * 70)
 
-    # 初始化数据库
-    try:
-        sync_db.init()
-        logger.info("✓ Database connected")
-    except Exception as e:
-        logger.error(f"✗ Database connection failed: {e}")
-        sys.exit(1)
+    # 注意：不在主进程中初始化数据库
+    # 数据库连接将在 fork 后的子进程中初始化（在 executor.py 中）
+    # 这样可以避免 macOS 的 fork 安全问题
+    logger.info("✓ Database initialization deferred to worker processes")
 
-    # 初始化 Redis
+    # 初始化 Redis（Redis 连接可以安全地被 fork）
     try:
         redis_manager.init()
         if not redis_manager.ping():
@@ -73,7 +71,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ Worker error: {e}", exc_info=True)
     finally:
-        sync_db.close()
+        # 注意：数据库在主进程中未初始化，不需要关闭
         redis_manager.close()
         logger.info("=" * 70)
         logger.info("✅ Worker stopped")
