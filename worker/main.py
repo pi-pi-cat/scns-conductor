@@ -4,7 +4,6 @@ Worker Service - 主入口
 纯执行服务，从队列获取已调度的作业并执行
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -29,12 +28,15 @@ def main():
     logger.info("💪 SCNS-Conductor Worker Service v2.0")
     logger.info("=" * 70)
 
-    # 注意：不在主进程中初始化数据库
-    # 数据库连接将在 fork 后的子进程中初始化（在 executor.py 中）
-    # 这样可以避免 macOS 的 fork 安全问题
-    logger.info("✓ Database initialization deferred to worker processes")
+    # 初始化数据库
+    try:
+        sync_db.init()
+        logger.info("✓ Database connected")
+    except Exception as e:
+        logger.error(f"✗ Database connection failed: {e}")
+        sys.exit(1)
 
-    # 初始化 Redis（Redis 连接可以安全地被 fork）
+    # 初始化 Redis
     try:
         redis_manager.init()
         if not redis_manager.ping():
@@ -52,11 +54,38 @@ def main():
     logger.info(f"Queue: {queue.name}")
     logger.info("-" * 70)
 
+    # 清理过期的 worker（解决重启时名称冲突）
+    worker_name = f"worker-{settings.NODE_NAME}"
+    connection = redis_manager.get_connection()
+
+    # 获取所有 worker
+    from rq.worker import Worker as RQWorker
+
+    all_workers = RQWorker.all(connection=connection)
+
+    # 查找同名 worker
+    for w in all_workers:
+        if w.name == worker_name:
+            # 检查是否还活着
+            if w.state in ["busy", "idle"]:
+                # 尝试发送心跳，如果失败说明 worker 已死
+                try:
+                    w.refresh()
+                    if not w.is_alive():
+                        logger.warning(f"🧹 Cleaning up dead worker: {worker_name}")
+                        w.register_death()
+                except Exception as e:
+                    logger.warning(f"🧹 Cleaning up stale worker: {worker_name} - {e}")
+                    w.register_death()
+            else:
+                logger.warning(f"🧹 Cleaning up stopped worker: {worker_name}")
+                w.register_death()
+
     # 创建 Worker
     worker = Worker(
         [queue],
-        connection=redis_manager.get_connection(),
-        name=f"worker-{settings.NODE_NAME}",
+        connection=connection,
+        name=worker_name,
     )
 
     logger.info("=" * 70)
@@ -71,7 +100,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ Worker error: {e}", exc_info=True)
     finally:
-        # 注意：数据库在主进程中未初始化，不需要关闭
+        sync_db.close()
         redis_manager.close()
         logger.info("=" * 70)
         logger.info("✅ Worker stopped")

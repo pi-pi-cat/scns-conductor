@@ -34,6 +34,10 @@ class JobExecutor:
         """
         logger.info(f"🚀 Executing job {job_id}")
 
+        exit_code = None
+        error_occurred = False
+        error_msg = None
+
         try:
             # 加载作业
             job = self._load_job(job_id)
@@ -48,30 +52,26 @@ class JobExecutor:
             # 执行作业
             exit_code = self._run(job)
 
-            # 更新状态
-            self._update_completion(job_id, exit_code)
-
         except Exception as e:
             logger.error(f"❌ Job {job_id} failed: {e}", exc_info=True)
-            self._mark_failed(job_id, str(e))
+            error_occurred = True
+            error_msg = str(e)
 
         finally:
-            # 释放资源
+            # 重要：先释放资源，再更新状态
+            # 避免 scheduler 的 release_completed() 抢先释放资源
             self._release_resources(job_id)
+
+            # 更新最终状态
+            if error_occurred:
+                self._mark_failed(job_id, error_msg)
+            elif exit_code is not None:
+                self._update_completion(job_id, exit_code)
+
             logger.info(f"✅ Job {job_id} finished")
 
     def _load_job(self, job_id: int) -> Job:
-        """
-        加载作业信息
-
-        注意：这是在 RQ fork 后的子进程中首次访问数据库
-        需要确保数据库连接已初始化
-        """
-        # 确保数据库已初始化（在 fork 后的子进程中）
-        if not sync_db.is_initialized():
-            logger.info("Initializing database connection in worker process")
-            sync_db.init()
-
+        """加载作业信息"""
         with sync_db.get_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if not job:
@@ -176,16 +176,18 @@ class JobExecutor:
             job_id: 作业 ID
         """
         with sync_db.get_session() as session:
+            # 查找未释放的资源分配记录
             allocation = (
                 session.query(ResourceAllocation)
                 .filter(
                     ResourceAllocation.job_id == job_id,
-                    ResourceAllocation.released,
+                    ~ResourceAllocation.released,  # 查找未释放的
                 )
                 .first()
             )
 
             if allocation:
+                # 标记为已释放
                 allocation.released = True
                 allocation.released_time = datetime.utcnow()
                 session.commit()
@@ -194,7 +196,7 @@ class JobExecutor:
                     f"♻️  Released {allocation.allocated_cpus} CPUs for job {job_id}"
                 )
             else:
-                logger.warning(f"⚠️  No allocation found for job {job_id}")
+                logger.warning(f"⚠️  No unreleased allocation found for job {job_id}")
 
 
 # RQ 任务入口
