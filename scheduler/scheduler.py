@@ -4,38 +4,40 @@ Job Scheduler - 作业调度器
 算法：FIFO + First Fit
 资源管理：使用 ResourceManager 统一管理资源
 
-重构说明：
-- 使用 ResourceManager 替代重复的资源查询逻辑
-- 遵循 DRY 原则，避免代码重复
-- 使用服务层提供的统一接口
+架构说明：
+- 使用 ResourceManager 统一管理资源
+- 使用 SchedulerRepository 封装数据库操作
+- 使用 CleanupStrategyManager 管理清理策略
+- 遵循单一职责原则和关注点分离
 """
 
-from datetime import datetime
 from loguru import logger
 
 from core.config import get_settings
 from core.database import sync_db
-from core.models import Job, ResourceAllocation
-from core.enums import JobState, ResourceStatus
+from core.models import Job
+from core.enums import ResourceStatus
 from core.redis_client import redis_manager
 from core.services import ResourceManager
 from scheduler.cleanup_strategies import CleanupStrategyManager, create_default_manager
+from scheduler.repositories import SchedulerRepository
 
 
 class JobScheduler:
     """
-    作业调度器 v4.0 - 使用服务层架构
+    作业调度器 v4.1 - Repository 模式重构
 
-    改进：
+    架构改进：
     - 使用 ResourceManager 统一管理资源
-    - 遵循 DRY 原则
-    - 降低耦合度
+    - 使用 SchedulerRepository 封装数据库操作
+    - 使用 CleanupStrategyManager 管理清理策略
+    - 遵循单一职责原则，降低耦合度
     """
 
     def __init__(
-        self, 
+        self,
         resource_manager: ResourceManager = None,
-        cleanup_manager: CleanupStrategyManager = None
+        cleanup_manager: CleanupStrategyManager = None,
     ):
         """
         初始化调度器
@@ -76,12 +78,7 @@ class JobScheduler:
             available_cpus = self.resource_manager.get_available_cpus()
 
             # 3. 查询 PENDING 作业（按提交时间排序）
-            pending_jobs = (
-                session.query(Job)
-                .filter(Job.state == JobState.PENDING)
-                .order_by(Job.submit_time)
-                .all()
-            )
+            pending_jobs = SchedulerRepository.get_pending_jobs(session)
 
             if not pending_jobs:
                 return 0
@@ -122,7 +119,7 @@ class JobScheduler:
     def _allocate_and_enqueue(self, session, job: Job, cpus: int) -> bool:
         """
         预留资源并将作业加入队列
-        
+
         注意：这里只是预留资源（status=reserved），真正的资源分配
         在 Worker 开始执行时才会更新为 allocated 状态。这样可以避免
         作业被调度但未实际运行时资源被永久占用的问题。
@@ -137,19 +134,20 @@ class JobScheduler:
         """
         try:
             # 1. 创建资源预留记录（status=reserved）
-            allocation = ResourceAllocation(
+            SchedulerRepository.create_resource_allocation(
+                session=session,
                 job_id=job.id,
                 allocated_cpus=cpus,
                 node_name=self.settings.NODE_NAME,
-                allocation_time=datetime.utcnow(),
                 status=ResourceStatus.RESERVED,
             )
-            session.add(allocation)
 
-            # 2. 更新作业状态
-            job.state = JobState.RUNNING
-            job.start_time = datetime.utcnow()
-            job.node_list = self.settings.NODE_NAME
+            # 2. 更新作业状态为 RUNNING
+            SchedulerRepository.update_job_to_running(
+                session=session,
+                job=job,
+                node_name=self.settings.NODE_NAME,
+            )
 
             # 3. 提交数据库（确保状态持久化）
             session.flush()
@@ -178,7 +176,7 @@ class JobScheduler:
     def execute_cleanup_strategies(self, current_time: int):
         """
         执行所有到期的清理策略
-        
+
         Args:
             current_time: 当前时间戳
         """
