@@ -122,9 +122,16 @@ class WorkerRegistry:
         """心跳循环（在独立线程中运行）"""
         while not self._stop_event.is_set():
             try:
-                # 使用仓储更新心跳
-                self._repo.update_heartbeat(self.worker_id, self.ttl)
-                logger.debug(f"💓 Heartbeat sent: {self.worker_id}")
+                # 检查 Worker 是否存在，如果不存在则重新注册
+                if not self._repo.exists(self.worker_id):
+                    logger.warning(
+                        f"Worker {self.worker_id} not found in Redis, re-registering..."
+                    )
+                    self.register()
+                else:
+                    # Worker 存在，仅更新心跳
+                    self._repo.update_heartbeat(self.worker_id, self.ttl)
+                    logger.debug(f"💓 Heartbeat sent: {self.worker_id}")
 
             except Exception as e:
                 logger.error(f"Heartbeat failed: {e}")
