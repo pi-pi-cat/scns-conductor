@@ -10,7 +10,7 @@ from sqlmodel import Field, SQLModel, Relationship, Column, Index
 from sqlalchemy import Text, BigInteger, text, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 
-from .enums import JobState, DataSource
+from .enums import JobState, DataSource, ResourceStatus
 
 
 class Job(SQLModel, table=True):
@@ -139,11 +139,18 @@ class ResourceAllocation(SQLModel, table=True):
     # 进程追踪
     process_id: Optional[int] = Field(default=None, description="操作系统进程ID")
 
+    # 分配状态
+    status: str = Field(
+        default=ResourceStatus.RESERVED,
+        max_length=20,
+        index=True,
+        description="资源状态：reserved(预留)/allocated(已分配)/released(已释放)",
+    )
+
     # 分配生命周期
     allocation_time: datetime = Field(
         default_factory=datetime.utcnow, description="资源分配时间"
     )
-    released: bool = Field(default=False, index=True, description="资源是否已释放")
     released_time: Optional[datetime] = Field(default=None, description="资源释放时间")
 
     # 元数据
@@ -159,7 +166,7 @@ class ResourceAllocation(SQLModel, table=True):
 
     # 索引
     __table_args__ = (
-        Index("idx_resource_allocation_released", "released"),
+        Index("idx_resource_allocation_status", "status"),
         Index("idx_resource_allocation_node", "node_name"),
     )
 

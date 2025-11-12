@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from core.database import sync_db
 from core.models import ResourceAllocation
+from core.enums import ResourceStatus
 from core.redis_client import redis_manager
 from core.services.worker_repository import WorkerRepository
 
@@ -301,13 +302,16 @@ class ResourceManager:
         """
         从数据库查询已分配的 CPU 数量
 
+        只统计 status='allocated' 的资源（真正在运行的作业）
+        不统计 status='reserved' 的资源（仅预留，未实际执行）
+
         Returns:
             已分配的 CPU 数量
         """
         with sync_db.get_session() as session:
             result = (
                 session.query(func.sum(ResourceAllocation.allocated_cpus))
-                .filter(~ResourceAllocation.released)
+                .filter(ResourceAllocation.status == ResourceStatus.ALLOCATED)
                 .scalar()
             )
             return result or 0

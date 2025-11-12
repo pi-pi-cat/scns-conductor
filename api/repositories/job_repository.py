@@ -14,7 +14,7 @@ from loguru import logger
 
 from core.database import async_db
 from core.models import Job, ResourceAllocation, SystemResource
-from core.enums import JobState
+from core.enums import JobState, ResourceStatus
 
 
 class JobRepository:
@@ -180,6 +180,8 @@ class JobRepository:
         """
         释放资源分配
 
+        更新状态为 released
+
         Args:
             job_id: 作业ID
 
@@ -191,7 +193,7 @@ class JobRepository:
                 update(ResourceAllocation)
                 .where(ResourceAllocation.job_id == job_id)
                 .values(
-                    released=True,
+                    status=ResourceStatus.RELEASED,
                     released_time=datetime.utcnow(),
                     updated_at=datetime.utcnow(),
                 )
@@ -232,6 +234,8 @@ class JobRepository:
         """
         获取节点上已分配的CPU数量
 
+        只统计 status='allocated' 的资源（真正在运行的作业）
+
         Args:
             node_name: 节点名称
 
@@ -239,10 +243,10 @@ class JobRepository:
             已分配的CPU数量
         """
         async with async_db.get_session() as session:
-            # 查询该节点上所有未释放的资源分配
+            # 查询该节点上所有已分配（真正运行）的资源
             query = select(ResourceAllocation).where(
                 ResourceAllocation.node_name == node_name,
-                ResourceAllocation.released == False,
+                ResourceAllocation.status == ResourceStatus.ALLOCATED,
             )
 
             result = await session.execute(query)

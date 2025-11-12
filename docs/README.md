@@ -1,84 +1,97 @@
-# 文档中心
+# 项目文档索引
 
-## 📚 核心文档
+> 本文档是项目的文档中心，提供所有文档的索引和导航
 
-| 文档 | 说明 |
-|------|------|
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | 📊 项目状态总览 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 🏗️ 系统架构和设计原理 |
-| [RESOURCE_MANAGEMENT.md](RESOURCE_MANAGEMENT.md) | 🔐 资源管理设计（重要）|
-| [STRUCTURE.md](STRUCTURE.md) | 📁 项目目录结构详解 |
-| [MIGRATION.md](MIGRATION.md) | 🔄 v2.0 迁移指南 |
-| [API_EXAMPLES.md](API_EXAMPLES.md) | 💻 API 使用示例 |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | 🚀 生产环境部署指南 |
-| [INSTALL.md](INSTALL.md) | ⚙️ 安装配置说明 |
+## 📚 文档分类
 
-## 🏗️ 快速了解架构
+### 🏗️ 架构与设计
 
-### 三层独立服务
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - 系统架构设计
+- **[STRUCTURE.md](./STRUCTURE.md)** - 项目结构说明
+- **[REDIS_KEYS_REFERENCE.md](./REDIS_KEYS_REFERENCE.md)** - Redis 键值参考
 
-```
-┌─────────────┐
-│ API Server  │  接收作业，创建 PENDING
-└──────┬──────┘
-       ↓
-┌─────────────┐
-│  Scheduler  │  调度作业，分配资源，入队
-└──────┬──────┘
-       ↓
-┌─────────────┐
-│   Worker    │  执行作业，释放资源
-└─────────────┘
-```
+### 🚀 快速开始
 
-### 目录结构
+- **[INSTALL.md](./INSTALL.md)** - 安装指南
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - 部署指南
+- **[MIGRATION.md](./MIGRATION.md)** - 迁移指南
+- **[API_EXAMPLES.md](./API_EXAMPLES.md)** - API 使用示例
 
-```
-scns-conductor/
-├── scheduler/         # 调度服务
-│   ├── main.py
-│   ├── scheduler.py
-│   └── daemon.py
-├── worker/            # Worker 服务
-│   ├── main.py
-│   ├── executor.py
-│   └── process_utils.py
-├── api/               # API 服务
-└── core/              # 基础设施
-```
+### 🔧 Scheduler 重构
 
-### 工作流程
+> **重要**：所有 Scheduler 重构相关文档都在 `scheduler-refactoring/` 目录下
 
-```
-1. 用户 → API: 提交作业
-2. API → DB: 创建 Job (PENDING)
-3. Scheduler: 扫描 PENDING → 分配资源 → Job (RUNNING) → 入队
-4. Worker: 从队列取任务 → 执行 → 更新状态 → 释放资源
-```
+- **[scheduler-refactoring/](./scheduler-refactoring/README.md)** - Scheduler 重构文档索引
+  - **清理策略重构** - `scheduler-refactoring/cleanup-strategies/`
+  - **资源管理重构** - `scheduler-refactoring/resource-management/`
 
-## 🚀 快速开始
+### 📊 项目状态
 
-```bash
-# 启动基础设施
-make dev-infra
+- **[PROJECT_STATUS.md](./PROJECT_STATUS.md)** - 项目当前状态
+- **[archive/](./archive/)** - 历史文档归档
 
-# 启动服务（3个终端）
-make dev-scheduler
-make dev-worker
-make dev-api
-```
+## 🎯 文档组织规则
 
-## 📦 历史文档
+### 文档分类原则
 
-所有历史文档（重构记录、改进报告等）已移至 `archive/` 目录。
+1. **架构与设计文档** - 放在 `docs/` 根目录
+2. **Scheduler 重构文档** - 放在 `docs/scheduler-refactoring/` 目录
+3. **历史文档** - 放在 `docs/archive/` 目录
 
-## 📞 获取帮助
+### 新增文档规则
 
-1. 先查看 [ARCHITECTURE.md](ARCHITECTURE.md) 了解系统设计
-2. 参考 [API_EXAMPLES.md](API_EXAMPLES.md) 学习使用
-3. 遇到问题查看 [MIGRATION.md](MIGRATION.md) 的常见问题
+为了避免过多 token 消耗，**所有新的重构文档都应该放在 `docs/scheduler-refactoring/` 目录下**：
+
+- 清理策略相关 → `scheduler-refactoring/cleanup-strategies/`
+- 资源管理相关 → `scheduler-refactoring/resource-management/`
+- 其他 scheduler 相关 → `scheduler-refactoring/` 根目录
+
+## 📖 推荐阅读顺序
+
+### 新用户
+1. [INSTALL.md](./INSTALL.md) - 安装项目
+2. [ARCHITECTURE.md](./ARCHITECTURE.md) - 了解架构
+3. [API_EXAMPLES.md](./API_EXAMPLES.md) - 学习使用
+
+### 开发者
+1. [ARCHITECTURE.md](./ARCHITECTURE.md) - 系统架构
+2. [scheduler-refactoring/](./scheduler-refactoring/README.md) - 重构文档
+3. [PROJECT_STATUS.md](./PROJECT_STATUS.md) - 项目状态
+
+### 重构参与者
+1. [scheduler-refactoring/README.md](./scheduler-refactoring/README.md) - 重构文档索引
+2. 根据具体任务查看对应的子目录文档
+
+## 🔍 快速查找
+
+### 按主题查找
+
+- **清理策略** → `scheduler-refactoring/cleanup-strategies/`
+- **资源管理** → `scheduler-refactoring/resource-management/`
+- **API 使用** → `API_EXAMPLES.md`
+- **部署运维** → `DEPLOYMENT.md`
+- **历史变更** → `archive/`
+
+### 按类型查找
+
+- **设计文档** → `ARCHITECTURE.md`, `STRUCTURE.md`
+- **使用指南** → `INSTALL.md`, `API_EXAMPLES.md`
+- **重构文档** → `scheduler-refactoring/`
+- **历史文档** → `archive/`
+
+## 📝 文档维护
+
+- 所有文档使用 Markdown 格式
+- 文档命名使用大写字母和下划线（如 `CLEANUP_STRATEGY_V4.md`）
+- 重要文档应在开头包含目录和概述
+- 定期归档过时文档到 `archive/` 目录
+
+## 🔗 外部链接
+
+- [项目 GitHub](https://github.com/your-org/scns-conductor)
+- [问题反馈](https://github.com/your-org/scns-conductor/issues)
 
 ---
 
-**文档版本**: v2.0  
-**更新日期**: 2025-11-11
+**最后更新**: 2024  
+**维护者**: 开发团队

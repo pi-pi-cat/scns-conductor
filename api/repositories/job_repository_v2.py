@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from loguru import logger
 
 from core.models import Job, ResourceAllocation, SystemResource
-from core.enums import JobState
+from core.enums import JobState, ResourceStatus
 from .base_repository import BaseRepository, QueryBuilder
 
 
@@ -124,7 +124,7 @@ class ResourceAllocationRepository(BaseRepository[ResourceAllocation]):
         return await cls.update_by_id(
             job_id,
             {
-                "released": True,
+                "status": ResourceStatus.RELEASED,
                 "released_time": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
             },
@@ -132,11 +132,11 @@ class ResourceAllocationRepository(BaseRepository[ResourceAllocation]):
 
     @classmethod
     async def get_allocated_cpus_on_node(cls, node_name: str) -> int:
-        """获取节点上已分配的CPU数量"""
+        """获取节点上已分配的CPU数量（只统计真正在运行的作业）"""
         async with cls._session() as session:
             query = select(ResourceAllocation).where(
                 ResourceAllocation.node_name == node_name,
-                ResourceAllocation.released == False,
+                ResourceAllocation.status == ResourceStatus.ALLOCATED,
             )
             result = await session.execute(query)
             allocations = result.scalars().all()

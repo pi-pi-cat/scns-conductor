@@ -47,8 +47,8 @@ class SchedulerDaemon(threading.Thread):
                 # 1. 调度作业
                 self.scheduler.schedule()
 
-                # 2. 释放已完成作业的资源（兜底）
-                self.scheduler.release_completed()
+                # 2. 执行清理策略（统一管理）
+                self.scheduler.execute_cleanup_strategies(current_time)
 
                 # 3. 定期同步 Redis 缓存（容错）
                 if current_time - self._last_sync_time >= self.sync_interval:

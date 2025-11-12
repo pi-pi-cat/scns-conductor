@@ -16,9 +16,10 @@ from loguru import logger
 from core.config import get_settings
 from core.database import sync_db
 from core.models import Job, ResourceAllocation
-from core.enums import JobState
+from core.enums import JobState, ResourceStatus
 from core.redis_client import redis_manager
 from core.services import ResourceManager
+from scheduler.cleanup_strategies import CleanupStrategyManager, create_default_manager
 
 
 class JobScheduler:
@@ -31,18 +32,26 @@ class JobScheduler:
     - 降低耦合度
     """
 
-    def __init__(self, resource_manager: ResourceManager = None):
+    def __init__(
+        self, 
+        resource_manager: ResourceManager = None,
+        cleanup_manager: CleanupStrategyManager = None
+    ):
         """
         初始化调度器
 
         Args:
             resource_manager: 资源管理器（可选，用于依赖注入）
+            cleanup_manager: 清理策略管理器（可选，用于依赖注入）
         """
         self.settings = get_settings()
         self.queue = redis_manager.get_queue()
 
         # 使用资源管理器（依赖注入）
         self.resource_manager = resource_manager or ResourceManager()
+
+        # 使用清理策略管理器（依赖注入）
+        self.cleanup_manager = cleanup_manager or create_default_manager()
 
         # 初始化资源缓存
         self.resource_manager.init_cache()
@@ -112,7 +121,11 @@ class JobScheduler:
 
     def _allocate_and_enqueue(self, session, job: Job, cpus: int) -> bool:
         """
-        分配资源并将作业加入队列
+        预留资源并将作业加入队列
+        
+        注意：这里只是预留资源（status=reserved），真正的资源分配
+        在 Worker 开始执行时才会更新为 allocated 状态。这样可以避免
+        作业被调度但未实际运行时资源被永久占用的问题。
 
         Args:
             session: 数据库会话
@@ -123,13 +136,13 @@ class JobScheduler:
             True 如果成功
         """
         try:
-            # 1. 创建资源分配记录
+            # 1. 创建资源预留记录（status=reserved）
             allocation = ResourceAllocation(
                 job_id=job.id,
                 allocated_cpus=cpus,
                 node_name=self.settings.NODE_NAME,
                 allocation_time=datetime.utcnow(),
-                released=False,
+                status=ResourceStatus.RESERVED,
             )
             session.add(allocation)
 
@@ -141,8 +154,8 @@ class JobScheduler:
             # 3. 提交数据库（确保状态持久化）
             session.flush()
 
-            # 4. 更新资源缓存（使用 ResourceManager）
-            self.resource_manager.allocate(cpus)
+            # 4. 不在这里更新资源缓存，因为资源还没有真正分配
+            # 缓存会在 Worker 开始执行时更新
 
             # 5. 加入执行队列
             self.queue.enqueue(
@@ -152,7 +165,9 @@ class JobScheduler:
                 job_timeout=24 * 3600,
             )
 
-            logger.info(f"✓ Scheduled job {job.id} ({job.name}): {cpus} CPUs")
+            logger.info(
+                f"✓ Scheduled job {job.id} ({job.name}): {cpus} CPUs (reserved)"
+            )
             return True
 
         except Exception as e:
@@ -160,49 +175,14 @@ class JobScheduler:
             # 事务会自动回滚
             return False
 
-    def release_completed(self) -> int:
+    def execute_cleanup_strategies(self, current_time: int):
         """
-        释放已完成作业的资源（兜底机制）
-
-        检查所有已完成但资源未释放的作业，并释放其资源
-
-        Returns:
-            释放的作业数量
+        执行所有到期的清理策略
+        
+        Args:
+            current_time: 当前时间戳
         """
-        released_count = 0
-        total_released_cpus = 0
-
-        with sync_db.get_session() as session:
-            # 查询已完成但未释放资源的作业
-            stale_allocations = (
-                session.query(ResourceAllocation)
-                .join(Job)
-                .filter(
-                    ~ResourceAllocation.released,
-                    Job.state.in_(
-                        [JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED]
-                    ),
-                )
-                .all()
-            )
-
-            for allocation in stale_allocations:
-                allocation.released = True
-                allocation.released_time = datetime.utcnow()
-                total_released_cpus += allocation.allocated_cpus
-
-                logger.warning(
-                    f"♻️  Released orphan resources for job {allocation.job_id}: "
-                    f"{allocation.allocated_cpus} CPUs"
-                )
-                released_count += 1
-
-            if released_count > 0:
-                session.commit()
-                # 使用 ResourceManager 更新缓存
-                self.resource_manager.release(total_released_cpus)
-
-        return released_count
+        self.cleanup_manager.execute_due_strategies(current_time)
 
     def get_stats(self) -> dict:
         """获取资源统计信息"""

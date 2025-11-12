@@ -1,0 +1,37 @@
+# 清理策略配置文件示例
+# 
+# 使用方式：
+# 1. 复制此文件为 cleanup_strategies.yaml
+# 2. 根据实际需求修改配置
+# 3. 使用 create_manager_from_config() 加载配置
+
+strategies:
+  # 已完成作业清理（最高优先级）
+  completed_job_cleanup:
+    enabled: true
+    interval_seconds: 5
+    # 注意：此策略没有额外参数
+  
+  # 预留超时清理（依赖 completed_job_cleanup）
+  stale_reservation_cleanup:
+    enabled: true
+    interval_seconds: 120
+    max_age_minutes: 10
+  
+  # 卡住作业清理
+  stuck_job_cleanup:
+    enabled: true
+    interval_seconds: 3600
+    max_age_hours: 48
+  
+  # 旧作业清理（默认禁用）
+  old_job_cleanup:
+    enabled: false  # 需要手动启用
+    interval_seconds: 86400
+    max_age_days: 30
+
+# 观察者配置（可选）
+observers:
+  # 可以在这里配置观察者
+  # 目前需要在代码中创建观察者实例
+

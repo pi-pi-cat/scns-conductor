@@ -14,7 +14,7 @@ from loguru import logger
 from core.config import get_settings
 from core.database import sync_db
 from core.models import Job, ResourceAllocation
-from core.enums import JobState
+from core.enums import JobState, ResourceStatus
 from core.services import ResourceManager
 
 from worker.process_utils import store_pid, kill_process_tree
@@ -62,6 +62,10 @@ class JobExecutor:
                     f"Job {job_id} state is {job.state.value}, expected RUNNING"
                 )
                 return
+
+            # 重要：在真正开始执行前，将资源状态从 reserved 更新为 allocated
+            # 这样才算真正占用资源
+            self._mark_resources_allocated(job_id, job.allocated_cpus)
 
             # 执行作业
             exit_code = self._run(job)
@@ -182,38 +186,99 @@ class JobExecutor:
         except Exception as e:
             logger.error(f"Failed to mark job {job_id} as failed: {e}")
 
+    def _mark_resources_allocated(self, job_id: int, cpus: int):
+        """
+        将资源状态从 reserved 更新为 allocated
+        
+        这是资源真正被占用的时刻，只有在 Worker 真正开始执行作业时才调用。
+        这样可以避免作业被调度但未实际运行导致的资源泄漏问题。
+
+        Args:
+            job_id: 作业 ID
+            cpus: CPU 数量
+        """
+        with sync_db.get_session() as session:
+            allocation = (
+                session.query(ResourceAllocation)
+                .filter(ResourceAllocation.job_id == job_id)
+                .first()
+            )
+
+            if allocation:
+                # 更新状态为 allocated
+                allocation.status = ResourceStatus.ALLOCATED
+                session.commit()
+
+                # 更新 Redis 缓存（现在资源才真正被占用）
+                self.resource_manager.allocate(cpus)
+
+                logger.info(
+                    f"✅ Resources allocated for job {job_id}: {cpus} CPUs "
+                    f"(status: reserved -> allocated)"
+                )
+            else:
+                logger.warning(
+                    f"⚠️  No resource allocation found for job {job_id}, "
+                    f"creating new allocation"
+                )
+                # 如果没有预留记录（异常情况），直接创建 allocated 记录
+                allocation = ResourceAllocation(
+                    job_id=job_id,
+                    allocated_cpus=cpus,
+                    node_name=self.settings.NODE_NAME,
+                    allocation_time=datetime.utcnow(),
+                    status=ResourceStatus.ALLOCATED,
+                )
+                session.add(allocation)
+                session.commit()
+                self.resource_manager.allocate(cpus)
+
     def _release_resources(self, job_id: int):
         """
         释放资源（更新数据库 + Redis 缓存）
+        
+        更新状态为 released，并回收资源到可用池
 
         Args:
             job_id: 作业 ID
         """
         with sync_db.get_session() as session:
-            # 查找未释放的资源分配记录
+            # 查找未释放的资源分配记录（status != released）
             allocation = (
                 session.query(ResourceAllocation)
                 .filter(
                     ResourceAllocation.job_id == job_id,
-                    ~ResourceAllocation.released,  # 查找未释放的
+                    ResourceAllocation.status != ResourceStatus.RELEASED,
                 )
                 .first()
             )
 
             if allocation:
                 cpus = allocation.allocated_cpus
+                old_status = allocation.status
 
-                # 1. 标记为已释放
-                allocation.released = True
+                # 1. 更新状态为已释放
+                allocation.status = ResourceStatus.RELEASED
                 allocation.released_time = datetime.utcnow()
                 session.commit()
 
-                # 2. 使用 ResourceManager 更新缓存
-                self.resource_manager.release(cpus)
-
-                logger.info(f"♻️  Released {cpus} CPUs for job {job_id}")
+                # 2. 只有在资源实际被分配时（allocated）才需要更新缓存
+                # 如果还是 reserved 状态就被释放了，说明从未真正占用，不需要释放缓存
+                if old_status == ResourceStatus.ALLOCATED:
+                    self.resource_manager.release(cpus)
+                    logger.info(
+                        f"♻️  Released {cpus} CPUs for job {job_id} "
+                        f"(status: allocated -> released)"
+                    )
+                else:
+                    logger.info(
+                        f"♻️  Released reservation for job {job_id} "
+                        f"(status: {old_status} -> released, no cache update needed)"
+                    )
             else:
-                logger.warning(f"⚠️  No unreleased allocation found for job {job_id}")
+                logger.warning(
+                    f"⚠️  No unreleased allocation found for job {job_id}"
+                )
 
 
 # RQ 任务入口
