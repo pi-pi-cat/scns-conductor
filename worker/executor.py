@@ -6,27 +6,28 @@ Job Executor - 作业执行器
 
 import os
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
 
 from core.config import get_settings
 from core.database import sync_db
-from core.models import Job, ResourceAllocation
+from core.models import Job
 from core.enums import JobState, ResourceStatus
 from core.services import ResourceManager
 
 from worker.process_utils import store_pid, kill_process_tree
+from worker.repositories import WorkerRepository
 
 
 class JobExecutor:
     """
     作业执行器
 
-    重构说明：
+    架构说明：
     - 使用 ResourceManager 管理资源释放
-    - 遵循 DRY 原则
+    - 使用 WorkerRepository 封装数据库操作
+    - 遵循单一职责原则和关注点分离
     """
 
     def __init__(self, resource_manager: ResourceManager = None):
@@ -91,10 +92,9 @@ class JobExecutor:
     def _load_job(self, job_id: int) -> Job:
         """加载作业信息"""
         with sync_db.get_session() as session:
-            job = session.query(Job).filter(Job.id == job_id).first()
+            job = WorkerRepository.get_job_by_id(session, job_id)
             if not job:
                 raise ValueError(f"Job {job_id} not found")
-            session.expunge(job)
             return job
 
     def _run(self, job: Job) -> int:
@@ -160,28 +160,16 @@ class JobExecutor:
     def _update_completion(self, job_id: int, exit_code: int):
         """更新作业完成状态"""
         with sync_db.get_session() as session:
-            job = session.query(Job).filter(Job.id == job_id).first()
-            if job:
-                job.state = JobState.COMPLETED if exit_code == 0 else JobState.FAILED
-                job.end_time = datetime.utcnow()
-                job.exit_code = f"{exit_code}:0"
-
-                if exit_code != 0:
-                    job.error_msg = f"Exited with code {exit_code}"
-
+            if WorkerRepository.update_job_completion(session, job_id, exit_code):
                 session.commit()
-                logger.info(f"Job {job_id} marked as {job.state.value}")
+                state = JobState.COMPLETED if exit_code == 0 else JobState.FAILED
+                logger.info(f"Job {job_id} marked as {state.value}")
 
     def _mark_failed(self, job_id: int, error_msg: str):
         """标记作业失败"""
         try:
             with sync_db.get_session() as session:
-                job = session.query(Job).filter(Job.id == job_id).first()
-                if job:
-                    job.state = JobState.FAILED
-                    job.end_time = datetime.utcnow()
-                    job.error_msg = error_msg
-                    job.exit_code = "-1:0"
+                if WorkerRepository.update_job_failed(session, job_id, error_msg):
                     session.commit()
         except Exception as e:
             logger.error(f"Failed to mark job {job_id} as failed: {e}")
@@ -189,7 +177,7 @@ class JobExecutor:
     def _mark_resources_allocated(self, job_id: int, cpus: int):
         """
         将资源状态从 reserved 更新为 allocated
-        
+
         这是资源真正被占用的时刻，只有在 Worker 真正开始执行作业时才调用。
         这样可以避免作业被调度但未实际运行导致的资源泄漏问题。
 
@@ -198,15 +186,11 @@ class JobExecutor:
             cpus: CPU 数量
         """
         with sync_db.get_session() as session:
-            allocation = (
-                session.query(ResourceAllocation)
-                .filter(ResourceAllocation.job_id == job_id)
-                .first()
+            allocation = WorkerRepository.update_allocation_to_allocated(
+                session, job_id
             )
 
             if allocation:
-                # 更新状态为 allocated
-                allocation.status = ResourceStatus.ALLOCATED
                 session.commit()
 
                 # 更新 Redis 缓存（现在资源才真正被占用）
@@ -222,47 +206,34 @@ class JobExecutor:
                     f"creating new allocation"
                 )
                 # 如果没有预留记录（异常情况），直接创建 allocated 记录
-                allocation = ResourceAllocation(
+                WorkerRepository.create_allocation_as_allocated(
+                    session=session,
                     job_id=job_id,
                     allocated_cpus=cpus,
                     node_name=self.settings.NODE_NAME,
-                    allocation_time=datetime.utcnow(),
-                    status=ResourceStatus.ALLOCATED,
                 )
-                session.add(allocation)
                 session.commit()
                 self.resource_manager.allocate(cpus)
 
     def _release_resources(self, job_id: int):
         """
         释放资源（更新数据库 + Redis 缓存）
-        
+
         更新状态为 released，并回收资源到可用池
 
         Args:
             job_id: 作业 ID
         """
         with sync_db.get_session() as session:
-            # 查找未释放的资源分配记录（status != released）
-            allocation = (
-                session.query(ResourceAllocation)
-                .filter(
-                    ResourceAllocation.job_id == job_id,
-                    ResourceAllocation.status != ResourceStatus.RELEASED,
-                )
-                .first()
-            )
+            result = WorkerRepository.release_allocation(session, job_id)
 
-            if allocation:
+            if result:
+                allocation, old_status = result
                 cpus = allocation.allocated_cpus
-                old_status = allocation.status
 
-                # 1. 更新状态为已释放
-                allocation.status = ResourceStatus.RELEASED
-                allocation.released_time = datetime.utcnow()
                 session.commit()
 
-                # 2. 只有在资源实际被分配时（allocated）才需要更新缓存
+                # 只有在资源实际被分配时（allocated）才需要更新缓存
                 # 如果还是 reserved 状态就被释放了，说明从未真正占用，不需要释放缓存
                 if old_status == ResourceStatus.ALLOCATED:
                     self.resource_manager.release(cpus)
@@ -276,9 +247,7 @@ class JobExecutor:
                         f"(status: {old_status} -> released, no cache update needed)"
                     )
             else:
-                logger.warning(
-                    f"⚠️  No unreleased allocation found for job {job_id}"
-                )
+                logger.warning(f"⚠️  No unreleased allocation found for job {job_id}")
 
 
 # RQ 任务入口

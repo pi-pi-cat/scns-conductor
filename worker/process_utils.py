@@ -9,8 +9,8 @@ import time
 from loguru import logger
 
 from core.database import sync_db
-from core.models import ResourceAllocation
-from core.enums import ResourceStatus
+
+from worker.repositories import WorkerRepository
 
 
 def store_pid(job_id: int, pid: int):
@@ -23,18 +23,7 @@ def store_pid(job_id: int, pid: int):
     """
     try:
         with sync_db.get_session() as session:
-            # 查找该作业的资源分配记录（未释放的）
-            allocation = (
-                session.query(ResourceAllocation)
-                .filter(
-                    ResourceAllocation.job_id == job_id,
-                    ResourceAllocation.status != ResourceStatus.RELEASED,
-                )
-                .first()
-            )
-
-            if allocation:
-                allocation.process_id = pid
+            if WorkerRepository.update_process_id(session, job_id, pid):
                 session.commit()
                 logger.debug(f"Job {job_id} PID {pid} stored in database")
             else:

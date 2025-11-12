@@ -35,10 +35,11 @@ scheduler-refactoring/
 
 ## 📚 文档分类
 
-### Scheduler Repository 重构
+### Repository 重构
 
 #### 核心文档
 - **SCHEDULER_REPOSITORY_REFACTORING.md** - Scheduler Repository 重构说明
+- **WORKER_REPOSITORY_REFACTORING.md** - Worker Repository 重构说明
 
 ### 清理策略重构
 
