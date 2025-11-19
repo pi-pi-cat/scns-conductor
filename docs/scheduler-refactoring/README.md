@@ -41,6 +41,13 @@ scheduler-refactoring/
 - **SCHEDULER_REPOSITORY_REFACTORING.md** - Scheduler Repository 重构说明
 - **WORKER_REPOSITORY_REFACTORING.md** - Worker Repository 重构说明
 
+### Worker 改进方案
+
+#### 核心文档
+- **worker-improvements/WORKER_IMPROVEMENT_PROPOSAL.md** - Worker 模块改进方案（架构设计、错误处理、资源管理、进程监控等）
+- **worker-improvements/WORKER_CONCURRENCY_SOLUTION.md** - Worker 单机并发执行方案（多进程 Worker 实现）
+- **worker-improvements/JOB_CANCELLATION_SOLUTION.md** - 作业取消方案（优雅的进程终止机制，Redis 信号机制）
+
 ### 清理策略重构
 
 #### 核心架构文档
